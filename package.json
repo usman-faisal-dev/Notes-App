@@ -2,7 +2,7 @@
   "name": "notes-app",
   "version": "0.1.0",
   "description": "Open-source cross-platform Notes app",
-  "main": "dist-electron/main.js",
+  "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -31,7 +31,6 @@
     "@tiptap/pm": "^2.9.1",
     "@tiptap/react": "^2.9.1",
     "@tiptap/starter-kit": "^2.9.1",
-    "better-sqlite3": "^11.5.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
@@ -41,9 +40,17 @@
   "build": {
     "appId": "com.notes.app",
     "productName": "Notes",
-    "directories": { "output": "release" },
-    "win": { "target": "nsis" },
-    "mac": { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

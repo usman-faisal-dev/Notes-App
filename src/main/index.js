@@ -1,193 +1,256 @@
 import { app, shell, BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { join } from 'path'
-import Database from 'better-sqlite3'
+import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 
 nativeTheme.themeSource = 'dark'
 
-let db
 let mainWindow
+let dbPath
+let store = {
+  folders: [],
+  notes: [],
+  tags: [],
+  note_tags: []
+}
 
-function createDatabase() {
+function loadDatabase() {
   const userDataPath = app.getPath('userData')
-  db = new Database(join(userDataPath, 'notes.db'))
+  if (!fs.existsSync(userDataPath)) {
+    fs.mkdirSync(userDataPath, { recursive: true })
+  }
+  dbPath = join(userDataPath, 'notes-data.json')
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS folders (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      icon TEXT DEFAULT 'folder',
-      color TEXT DEFAULT '#FFD60A',
-      sort_order INTEGER DEFAULT 0,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      updated_at INTEGER DEFAULT (strftime('%s','now') * 1000)
-    );
+  if (fs.existsSync(dbPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'))
+      store = {
+        folders: data.folders || [],
+        notes: data.notes || [],
+        tags: data.tags || [],
+        note_tags: data.note_tags || []
+      }
+    } catch (err) {
+      console.error('Failed to parse database file, resetting:', err)
+    }
+  }
 
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      folder_id TEXT,
-      title TEXT NOT NULL DEFAULT 'Untitled',
-      content TEXT DEFAULT '',
-      content_text TEXT DEFAULT '',
-      is_pinned INTEGER DEFAULT 0,
-      is_locked INTEGER DEFAULT 0,
-      is_trashed INTEGER DEFAULT 0,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      updated_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
-    );
+  // Seed initial data if empty
+  if (store.folders.length === 0) {
+    const defaultFolderId = uuidv4()
+    store.folders.push({
+      id: defaultFolderId,
+      name: 'Notes',
+      icon: 'folder',
+      color: '#ffd60a',
+      sort_order: 0,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    })
 
-    CREATE TABLE IF NOT EXISTS tags (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      color TEXT DEFAULT '#5E5CE6',
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
-    );
-
-    CREATE TABLE IF NOT EXISTS note_tags (
-      note_id TEXT NOT NULL,
-      tag_id TEXT NOT NULL,
-      PRIMARY KEY (note_id, tag_id),
-      FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
-      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id);
-    CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_notes_trashed ON notes(is_trashed);
-  `)
-
-  // Seed default folders if empty
-  const count = db.prepare('SELECT COUNT(*) as c FROM folders').get()
-  if (count.c === 0) {
-    const now = Date.now()
-    db.prepare('INSERT INTO folders (id, name, icon, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(uuidv4(), 'Personal', 'folder', '#FFD60A', 0, now, now)
-    db.prepare('INSERT INTO folders (id, name, icon, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(uuidv4(), 'Work', 'briefcase', '#30D158', 1, now, now)
-    db.prepare('INSERT INTO folders (id, name, icon, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(uuidv4(), 'Ideas', 'lightbulb', '#FF9F0A', 2, now, now)
+    store.notes.push({
+      id: uuidv4(),
+      folder_id: defaultFolderId,
+      title: 'Welcome to OpenNotes',
+      content: '<h1>Welcome to OpenNotes 📝</h1><p>A fast, open-source cross-platform notes application inspired by Apple Notes.</p><ul><li>Offline-first local storage</li><li>Rich text with TipTap (Markdown, Checklists, Code)</li><li>Runs natively on macOS and Windows</li></ul>',
+      content_text: 'Welcome to OpenNotes. A fast, open-source cross-platform notes app inspired by Apple Notes.',
+      is_pinned: 1,
+      is_locked: 0,
+      is_trashed: 0,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    })
+    saveDatabase()
   }
 }
 
-// --- IPC Handlers ---
-
-// FOLDERS
-ipcMain.handle('folders:getAll', () => {
-  return db.prepare('SELECT * FROM folders ORDER BY sort_order ASC, name ASC').all()
-})
-
-ipcMain.handle('folders:create', (_, { name, icon = 'folder', color = '#FFD60A' }) => {
-  const id = uuidv4()
-  const now = Date.now()
-  const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM folders').get()
-  const sortOrder = (maxOrder.m ?? -1) + 1
-  db.prepare('INSERT INTO folders (id, name, icon, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, name, icon, color, sortOrder, now, now)
-  return db.prepare('SELECT * FROM folders WHERE id = ?').get(id)
-})
-
-ipcMain.handle('folders:update', (_, { id, name, icon, color }) => {
-  const now = Date.now()
-  db.prepare('UPDATE folders SET name = ?, icon = ?, color = ?, updated_at = ? WHERE id = ?')
-    .run(name, icon, color, now, id)
-  return db.prepare('SELECT * FROM folders WHERE id = ?').get(id)
-})
-
-ipcMain.handle('folders:delete', (_, id) => {
-  db.prepare('DELETE FROM folders WHERE id = ?').run(id)
-  return true
-})
-
-// NOTES
-ipcMain.handle('notes:getAll', (_, { folderId, view, search }) => {
-  if (search && search.trim()) {
-    const q = `%${search.trim()}%`
-    return db.prepare(`
-      SELECT * FROM notes
-      WHERE is_trashed = 0 AND (title LIKE ? OR content_text LIKE ?)
-      ORDER BY is_pinned DESC, updated_at DESC
-    `).all(q, q)
+function saveDatabase() {
+  try {
+    fs.writeFileSync(dbPath, JSON.stringify(store, null, 2), 'utf8')
+  } catch (err) {
+    console.error('Failed to save database:', err)
   }
-  if (view === 'all') {
-    return db.prepare('SELECT * FROM notes WHERE is_trashed = 0 ORDER BY is_pinned DESC, updated_at DESC').all()
-  }
-  if (view === 'trash') {
-    return db.prepare('SELECT * FROM notes WHERE is_trashed = 1 ORDER BY updated_at DESC').all()
-  }
-  if (folderId) {
-    return db.prepare('SELECT * FROM notes WHERE folder_id = ? AND is_trashed = 0 ORDER BY is_pinned DESC, updated_at DESC').all(folderId)
-  }
-  return db.prepare('SELECT * FROM notes WHERE is_trashed = 0 ORDER BY is_pinned DESC, updated_at DESC').all()
-})
+}
 
-ipcMain.handle('notes:get', (_, id) => {
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(id)
-})
+function registerIpcHandlers() {
+  // Folders
+  ipcMain.handle('folders:getAll', () => {
+    return store.folders.map(f => {
+      const count = store.notes.filter(n => n.folder_id === f.id && n.is_trashed === 0).length
+      return { ...f, note_count: count }
+    }).sort((a, b) => a.sort_order - b.sort_order)
+  })
 
-ipcMain.handle('notes:create', (_, { folderId, title = 'New Note', content = '', content_text = '' }) => {
-  const id = uuidv4()
-  const now = Date.now()
-  db.prepare('INSERT INTO notes (id, folder_id, title, content, content_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, folderId || null, title, content, content_text, now, now)
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(id)
-})
+  ipcMain.handle('folders:create', (_, data) => {
+    const newFolder = {
+      id: uuidv4(),
+      name: data.name,
+      icon: data.icon || 'folder',
+      color: data.color || '#ffd60a',
+      sort_order: store.folders.length,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }
+    store.folders.push(newFolder)
+    saveDatabase()
+    return newFolder
+  })
 
-ipcMain.handle('notes:update', (_, { id, title, content, content_text, is_pinned, is_locked }) => {
-  const now = Date.now()
-  const existing = db.prepare('SELECT * FROM notes WHERE id = ?').get(id)
-  if (!existing) return null
-  db.prepare(`UPDATE notes SET
-    title = ?, content = ?, content_text = ?,
-    is_pinned = ?, is_locked = ?, updated_at = ?
-    WHERE id = ?`).run(
-    title ?? existing.title,
-    content ?? existing.content,
-    content_text ?? existing.content_text,
-    is_pinned ?? existing.is_pinned,
-    is_locked ?? existing.is_locked,
-    now, id
-  )
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(id)
-})
+  ipcMain.handle('folders:update', (_, { id, name, color, icon }) => {
+    const folder = store.folders.find(f => f.id === id)
+    if (folder) {
+      if (name !== undefined) folder.name = name
+      if (color !== undefined) folder.color = color
+      if (icon !== undefined) folder.icon = icon
+      folder.updated_at = Date.now()
+      saveDatabase()
+    }
+    return folder
+  })
 
-ipcMain.handle('notes:trash', (_, id) => {
-  db.prepare('UPDATE notes SET is_trashed = 1, updated_at = ? WHERE id = ?').run(Date.now(), id)
-  return true
-})
+  ipcMain.handle('folders:delete', (_, id) => {
+    store.folders = store.folders.filter(f => f.id !== id)
+    store.notes.forEach(n => {
+      if (n.folder_id === id) n.folder_id = null
+    })
+    saveDatabase()
+    return true
+  })
 
-ipcMain.handle('notes:restore', (_, id) => {
-  db.prepare('UPDATE notes SET is_trashed = 0, updated_at = ? WHERE id = ?').run(Date.now(), id)
-  return true
-})
+  // Notes
+  ipcMain.handle('notes:getAll', (_, params = {}) => {
+    let result = [...store.notes]
 
-ipcMain.handle('notes:delete', (_, id) => {
-  db.prepare('DELETE FROM notes WHERE id = ?').run(id)
-  return true
-})
+    if (params.trashed) {
+      result = result.filter(n => n.is_trashed === 1)
+    } else {
+      result = result.filter(n => n.is_trashed === 0)
 
-ipcMain.handle('notes:emptyTrash', () => {
-  db.prepare('DELETE FROM notes WHERE is_trashed = 1').run()
-  return true
-})
+      if (params.folder_id) {
+        result = result.filter(n => n.folder_id === params.folder_id)
+      }
+      if (params.pinned) {
+        result = result.filter(n => n.is_pinned === 1)
+      }
+      if (params.tag_id) {
+        const taggedNoteIds = new Set(
+          store.note_tags.filter(nt => nt.tag_id === params.tag_id).map(nt => nt.note_id)
+        )
+        result = result.filter(n => taggedNoteIds.has(n.id))
+      }
+      if (params.search) {
+        const q = params.search.toLowerCase()
+        result = result.filter(n => 
+          (n.title && n.title.toLowerCase().includes(q)) ||
+          (n.content_text && n.content_text.toLowerCase().includes(q))
+        )
+      }
+    }
 
-ipcMain.handle('notes:getStats', () => {
-  const total = db.prepare('SELECT COUNT(*) as c FROM notes WHERE is_trashed = 0').get().c
-  const trashed = db.prepare('SELECT COUNT(*) as c FROM notes WHERE is_trashed = 1').get().c
-  return { total, trashed }
-})
+    return result.sort((a, b) => (b.is_pinned - a.is_pinned) || (b.updated_at - a.updated_at))
+  })
 
-// TAGS
-ipcMain.handle('tags:getAll', () => {
-  return db.prepare('SELECT * FROM tags ORDER BY name ASC').all()
-})
+  ipcMain.handle('notes:get', (_, id) => {
+    return store.notes.find(n => n.id === id) || null
+  })
 
-ipcMain.handle('tags:create', (_, { name, color }) => {
-  const id = uuidv4()
-  const now = Date.now()
-  db.prepare('INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)').run(id, name, color || '#5E5CE6', now)
-  return db.prepare('SELECT * FROM tags WHERE name = ?').get(name)
-})
+  ipcMain.handle('notes:create', (_, data = {}) => {
+    const defaultFolder = store.folders[0]?.id || null
+    const newNote = {
+      id: uuidv4(),
+      folder_id: data.folder_id || defaultFolder,
+      title: data.title || 'New Note',
+      content: data.content || '',
+      content_text: data.content_text || '',
+      is_pinned: 0,
+      is_locked: 0,
+      is_trashed: 0,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    }
+    store.notes.unshift(newNote)
+    saveDatabase()
+    return newNote
+  })
+
+  ipcMain.handle('notes:update', (_, data) => {
+    const note = store.notes.find(n => n.id === data.id)
+    if (note) {
+      if (data.title !== undefined) note.title = data.title
+      if (data.content !== undefined) note.content = data.content
+      if (data.content_text !== undefined) note.content_text = data.content_text
+      if (data.folder_id !== undefined) note.folder_id = data.folder_id
+      if (data.is_pinned !== undefined) note.is_pinned = data.is_pinned
+      if (data.is_locked !== undefined) note.is_locked = data.is_locked
+      note.updated_at = Date.now()
+      saveDatabase()
+    }
+    return note
+  })
+
+  ipcMain.handle('notes:trash', (_, id) => {
+    const note = store.notes.find(n => n.id === id)
+    if (note) {
+      note.is_trashed = 1
+      note.updated_at = Date.now()
+      saveDatabase()
+    }
+    return true
+  })
+
+  ipcMain.handle('notes:restore', (_, id) => {
+    const note = store.notes.find(n => n.id === id)
+    if (note) {
+      note.is_trashed = 0
+      note.updated_at = Date.now()
+      saveDatabase()
+    }
+    return true
+  })
+
+  ipcMain.handle('notes:delete', (_, id) => {
+    store.notes = store.notes.filter(n => n.id !== id)
+    store.note_tags = store.note_tags.filter(nt => nt.note_id !== id)
+    saveDatabase()
+    return true
+  })
+
+  ipcMain.handle('notes:emptyTrash', () => {
+    const trashedIds = new Set(store.notes.filter(n => n.is_trashed === 1).map(n => n.id))
+    store.notes = store.notes.filter(n => n.is_trashed === 0)
+    store.note_tags = store.note_tags.filter(nt => !trashedIds.has(nt.note_id))
+    saveDatabase()
+    return true
+  })
+
+  ipcMain.handle('notes:getStats', () => {
+    return {
+      total: store.notes.filter(n => n.is_trashed === 0).length,
+      pinned: store.notes.filter(n => n.is_pinned === 1 && n.is_trashed === 0).length,
+      trash: store.notes.filter(n => n.is_trashed === 1).length
+    }
+  })
+
+  // Tags
+  ipcMain.handle('tags:getAll', () => {
+    return [...store.tags]
+  })
+
+  ipcMain.handle('tags:create', (_, data) => {
+    const existing = store.tags.find(t => t.name.toLowerCase() === data.name.toLowerCase())
+    if (existing) return existing
+
+    const newTag = {
+      id: uuidv4(),
+      name: data.name,
+      color: data.color || '#5E5CE6',
+      created_at: Date.now()
+    }
+    store.tags.push(newTag)
+    saveDatabase()
+    return newTag
+  })
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -219,8 +282,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  createDatabase()
+  loadDatabase()
+  registerIpcHandlers()
   createWindow()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
