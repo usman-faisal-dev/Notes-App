@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -21,17 +21,44 @@ import {
   Quote, 
   Pin, 
   Trash2, 
-  FileText
+  FileText,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  Copy,
+  ClipboardPaste,
+  Download,
+  Upload,
+  FileCode,
+  SquarePen,
+  PanelLeft,
+  Columns
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { htmlToMarkdown, markdownToHtml, copyToClipboard, exportAsFile } from '../utils/markdown'
 
 export default function Editor({ 
   note, 
   onUpdateNote, 
   onTrashNote, 
-  isReadOnly 
+  onCreateNote,
+  isReadOnly,
+  isMaximized,
+  onToggleMaximize,
+  sidebarCollapsed,
+  onToggleSidebar,
+  notesListCollapsed,
+  onToggleNotesList
 }) {
   const saveTimeoutRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const [showMenu, setShowMenu] = useState(false)
+  const [toastMessage, setToastMessage] = useState(null)
+
+  const showToast = (msg) => {
+    setToastMessage(msg)
+    setTimeout(() => setToastMessage(null), 2500)
+  }
 
   const editor = useEditor({
     extensions: [
@@ -52,6 +79,18 @@ export default function Editor({
     ],
     content: note ? note.content : '',
     editable: !isReadOnly,
+    editorProps: {
+      handlePaste: (view, event, slice) => {
+        const text = event.clipboardData?.getData('text/plain')
+        // If pasted text contains markdown indicators like `# `, `- [ ]`, `**`, convert to HTML
+        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('**') || text.includes('```'))) {
+          const parsedHtml = markdownToHtml(text)
+          editor?.commands.insertContent(parsedHtml)
+          return true
+        }
+        return false
+      }
+    },
     onUpdate: ({ editor }) => {
       if (!note || isReadOnly) return
 
@@ -73,7 +112,7 @@ export default function Editor({
           content: html,
           content_text: text
         })
-      }, 400)
+      }, 350)
     }
   }, [note?.id])
 
@@ -87,12 +126,114 @@ export default function Editor({
     }
   }, [note?.id, isReadOnly])
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = () => setShowMenu(false)
+    if (showMenu) {
+      window.addEventListener('click', handleOutsideClick)
+      return () => window.removeEventListener('click', handleOutsideClick)
+    }
+  }, [showMenu])
+
+  // Markdown Action Handlers
+  const handleCopyMarkdown = async () => {
+    if (!editor) return
+    const md = htmlToMarkdown(editor.getHTML())
+    await copyToClipboard(md)
+    showToast('Copied as Markdown!')
+    setShowMenu(false)
+  }
+
+  const handleCopyPlainText = async () => {
+    if (!editor) return
+    const text = editor.getText()
+    await copyToClipboard(text)
+    showToast('Copied as Plain Text!')
+    setShowMenu(false)
+  }
+
+  const handlePastePlainText = async () => {
+    if (!editor || isReadOnly) return
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) {
+        editor.commands.insertContent(text)
+        showToast('Pasted Plain Text')
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard:', err)
+    }
+    setShowMenu(false)
+  }
+
+  const handleExportMarkdown = () => {
+    if (!editor || !note) return
+    const md = htmlToMarkdown(editor.getHTML())
+    const filename = `${(note.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`
+    exportAsFile(filename, md, 'text/markdown')
+    showToast(`Exported ${filename}`)
+    setShowMenu(false)
+  }
+
+  const handleImportMarkdownFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !editor || isReadOnly) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target.result
+      const html = markdownToHtml(text)
+      editor.commands.setContent(html, true)
+      showToast('Imported Markdown File!')
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+    setShowMenu(false)
+  }
+
   if (!note) {
     return (
       <main className="editor-panel">
+        <header className="editor-toolbar">
+          <div className="toolbar-group">
+            {sidebarCollapsed && (
+              <button 
+                className="toolbar-btn" 
+                title="Toggle Sidebar" 
+                onClick={onToggleSidebar}
+              >
+                <PanelLeft size={16} />
+              </button>
+            )}
+            {notesListCollapsed && (
+              <button 
+                className="toolbar-btn" 
+                title="Toggle Note List" 
+                onClick={onToggleNotesList}
+              >
+                <Columns size={16} />
+              </button>
+            )}
+            <button 
+              className="toolbar-btn toolbar-btn-prominent" 
+              title="Create Note (Cmd+N)" 
+              onClick={onCreateNote}
+            >
+              <SquarePen size={15} />
+              <span style={{ fontSize: '12px' }}>New Note</span>
+            </button>
+          </div>
+        </header>
         <div className="empty-state">
           <FileText className="empty-state-icon" />
-          <p className="empty-state-text">Select or create a note to start writing</p>
+          <p className="empty-state-text">Select a note or create a new one to begin writing</p>
+          <button 
+            className="btn-primary" 
+            onClick={onCreateNote}
+            style={{ marginTop: '12px' }}
+          >
+            Create Note
+          </button>
         </div>
       </main>
     )
@@ -103,13 +244,44 @@ export default function Editor({
     : ''
 
   return (
-    <main className="editor-panel">
+    <main className={`editor-panel ${isMaximized ? 'maximized' : ''}`}>
       <header className="editor-toolbar">
+        {/* Left Toolbar Items */}
         <div className="toolbar-group">
+          {sidebarCollapsed && (
+            <button 
+              className="toolbar-btn" 
+              title="Toggle Sidebar" 
+              onClick={onToggleSidebar}
+            >
+              <PanelLeft size={16} />
+            </button>
+          )}
+          {notesListCollapsed && (
+            <button 
+              className="toolbar-btn" 
+              title="Toggle Notes List" 
+              onClick={onToggleNotesList}
+            >
+              <Columns size={16} />
+            </button>
+          )}
+
+          <button 
+            className="toolbar-btn toolbar-btn-prominent" 
+            title="New Note (Cmd+N)" 
+            onClick={onCreateNote}
+          >
+            <SquarePen size={15} />
+            <span style={{ fontSize: '12px' }}>New Note</span>
+          </button>
+
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+
           <button
             className={`toolbar-btn ${editor?.isActive('bold') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleBold().run()}
-            title="Bold"
+            title="Bold (Cmd+B)"
             disabled={isReadOnly}
           >
             <Bold size={15} />
@@ -117,7 +289,7 @@ export default function Editor({
           <button
             className={`toolbar-btn ${editor?.isActive('italic') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleItalic().run()}
-            title="Italic"
+            title="Italic (Cmd+I)"
             disabled={isReadOnly}
           >
             <Italic size={15} />
@@ -125,7 +297,7 @@ export default function Editor({
           <button
             className={`toolbar-btn ${editor?.isActive('underline') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleUnderline().run()}
-            title="Underline"
+            title="Underline (Cmd+U)"
             disabled={isReadOnly}
           >
             <UnderlineIcon size={15} />
@@ -147,7 +319,7 @@ export default function Editor({
             <Highlighter size={15} />
           </button>
 
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 6px' }} />
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
 
           <button
             className={`toolbar-btn ${editor?.isActive('heading', { level: 1 }) ? 'active' : ''}`}
@@ -166,7 +338,7 @@ export default function Editor({
             <Heading2 size={15} />
           </button>
 
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 6px' }} />
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
 
           <button
             className={`toolbar-btn ${editor?.isActive('bulletList') ? 'active' : ''}`}
@@ -210,7 +382,17 @@ export default function Editor({
           </button>
         </div>
 
+        {/* Right Toolbar Items */}
         <div className="toolbar-group">
+          {/* Maximize / Focus Mode Button */}
+          <button
+            className={`toolbar-btn ${isMaximized ? 'active' : ''}`}
+            title={isMaximized ? 'Exit Focus Mode' : 'Maximize Note (Focus Mode)'}
+            onClick={onToggleMaximize}
+          >
+            {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
+
           {!isReadOnly && (
             <>
               <button
@@ -220,6 +402,7 @@ export default function Editor({
               >
                 <Pin size={15} fill={note.is_pinned === 1 ? 'var(--accent-yellow)' : 'none'} />
               </button>
+
               <button
                 className="toolbar-btn"
                 title="Move to Trash"
@@ -229,8 +412,83 @@ export default function Editor({
               </button>
             </>
           )}
+
+          {/* Markdown & Copy/Paste Options Dropdown */}
+          <div className="dropdown-container">
+            <button
+              className="toolbar-btn"
+              title="Markdown & Export Options"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowMenu(!showMenu)
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+
+            {showMenu && (
+              <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                <button className="dropdown-item" onClick={handleCopyMarkdown}>
+                  <div className="dropdown-item-left">
+                    <FileCode size={14} color="var(--accent-yellow)" />
+                    <span>Copy as Markdown</span>
+                  </div>
+                </button>
+
+                <button className="dropdown-item" onClick={handleCopyPlainText}>
+                  <div className="dropdown-item-left">
+                    <Copy size={14} />
+                    <span>Copy as Plain Text</span>
+                  </div>
+                </button>
+
+                <button className="dropdown-item" onClick={handlePastePlainText} disabled={isReadOnly}>
+                  <div className="dropdown-item-left">
+                    <ClipboardPaste size={14} />
+                    <span>Paste as Plain Text</span>
+                  </div>
+                </button>
+
+                <div className="dropdown-divider" />
+
+                <button className="dropdown-item" onClick={handleExportMarkdown}>
+                  <div className="dropdown-item-left">
+                    <Download size={14} />
+                    <span>Export as Markdown (.md)</span>
+                  </div>
+                </button>
+
+                <button 
+                  className="dropdown-item" 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isReadOnly}
+                >
+                  <div className="dropdown-item-left">
+                    <Upload size={14} />
+                    <span>Import Markdown (.md)...</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
+
+      {/* Hidden file input for Markdown import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        accept=".md,.markdown,.txt"
+        onChange={handleImportMarkdownFile}
+      />
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="toast-notification">
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       <div className="editor-content-area">
         <div className="note-date-header">

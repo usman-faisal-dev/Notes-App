@@ -119,6 +119,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState({ type: 'all' })
 
+  // Layout & View states
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [notesListCollapsed, setNotesListCollapsed] = useState(false)
+  const [isMaximized, setIsMaximized] = useState(false)
+  const [viewMode, setViewMode] = useState('list') // 'list' | 'gallery'
+
   // Load Folders & Stats
   const loadSidebarData = useCallback(async () => {
     try {
@@ -204,7 +210,6 @@ export default function App() {
   const handleUpdateNote = async (data) => {
     try {
       await api.updateNote(data)
-      // Optimistically update notes list
       setNotes(prev => prev.map(n => n.id === data.id ? { ...n, ...data, updated_at: Date.now() } : n))
       loadSidebarData()
     } catch (err) {
@@ -252,6 +257,37 @@ export default function App() {
     }
   }
 
+  // Toggle Maximize / Focus Mode
+  const handleToggleMaximize = () => {
+    if (!isMaximized) {
+      setIsMaximized(true)
+      setSidebarCollapsed(true)
+      setNotesListCollapsed(true)
+    } else {
+      setIsMaximized(false)
+      setSidebarCollapsed(false)
+      setNotesListCollapsed(false)
+    }
+  }
+
+  // Global Keyboard Shortcuts (Cmd+N for New Note, Cmd+Shift+F for Maximize)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+
+      if (isCmdOrCtrl && e.key === 'n' && !e.shiftKey) {
+        e.preventDefault()
+        handleCreateNote()
+      } else if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        handleToggleMaximize()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [folders, activeFilter, isMaximized])
+
   const activeNote = notes.find(n => n.id === selectedNoteId) || null
 
   return (
@@ -263,6 +299,8 @@ export default function App() {
         setActiveFilter={setActiveFilter}
         onCreateFolder={handleCreateFolder}
         noteStats={noteStats}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
       <NotesList
@@ -276,13 +314,26 @@ export default function App() {
         onEmptyTrash={handleEmptyTrash}
         onRestoreNote={handleRestoreNote}
         onPermanentDelete={handlePermanentDelete}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        isCollapsed={notesListCollapsed}
+        onToggleCollapse={() => setNotesListCollapsed(!notesListCollapsed)}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
       <Editor
         note={activeNote}
         onUpdateNote={handleUpdateNote}
         onTrashNote={handleTrashNote}
+        onCreateNote={handleCreateNote}
         isReadOnly={activeFilter.type === 'trash'}
+        isMaximized={isMaximized}
+        onToggleMaximize={handleToggleMaximize}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        notesListCollapsed={notesListCollapsed}
+        onToggleNotesList={() => setNotesListCollapsed(!notesListCollapsed)}
       />
     </div>
   )

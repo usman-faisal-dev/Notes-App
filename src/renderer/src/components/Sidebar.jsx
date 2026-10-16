@@ -6,7 +6,10 @@ import {
   Tag as TagIcon, 
   Plus, 
   FolderPlus,
-  StickyNote
+  StickyNote,
+  ChevronDown,
+  ChevronRight,
+  PanelLeftClose
 } from 'lucide-react'
 
 export default function Sidebar({ 
@@ -15,10 +18,14 @@ export default function Sidebar({
   activeFilter, 
   setActiveFilter, 
   onCreateFolder,
-  noteStats
+  noteStats,
+  isCollapsed,
+  onToggleCollapse
 }) {
   const [showFolderModal, setShowFolderModal] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
+  const [foldersExpanded, setFoldersExpanded] = useState(true)
+  const [tagsExpanded, setTagsExpanded] = useState(true)
 
   const handleCreateFolder = (e) => {
     e.preventDefault()
@@ -29,8 +36,16 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="sidebar">
-      <div className="window-drag-region"></div>
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="window-drag-region">
+        <button 
+          className="sidebar-action-btn"
+          title="Collapse Sidebar"
+          onClick={onToggleCollapse}
+        >
+          <PanelLeftClose size={16} />
+        </button>
+      </div>
       
       <div className="sidebar-header">
         <span className="sidebar-title">Quick Filters</span>
@@ -72,18 +87,28 @@ export default function Sidebar({
 
         <div className="sidebar-section-divider"></div>
 
+        {/* Folders Section with Expand/Collapse */}
         <div className="sidebar-header" style={{ padding: '4px 8px 8px' }}>
-          <span className="sidebar-title">Folders</span>
+          <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+            onClick={() => setFoldersExpanded(!foldersExpanded)}
+          >
+            {foldersExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+            <span className="sidebar-title">Folders</span>
+          </div>
           <button 
             className="sidebar-action-btn"
             title="New Folder"
-            onClick={() => setShowFolderModal(true)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowFolderModal(true)
+            }}
           >
             <Plus size={14} />
           </button>
         </div>
 
-        {folders.map(folder => (
+        {foldersExpanded && folders.map(folder => (
           <div 
             key={folder.id}
             className={`nav-item ${activeFilter.type === 'folder' && activeFilter.id === folder.id ? 'active' : ''}`}
@@ -99,13 +124,20 @@ export default function Sidebar({
           </div>
         ))}
 
+        {/* Tags Section with Expand/Collapse */}
         {tags && tags.length > 0 && (
           <>
             <div className="sidebar-section-divider"></div>
             <div className="sidebar-header" style={{ padding: '4px 8px 8px' }}>
-              <span className="sidebar-title">Tags</span>
+              <div 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                onClick={() => setTagsExpanded(!tagsExpanded)}
+              >
+                {tagsExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+                <span className="sidebar-title">Tags</span>
+              </div>
             </div>
-            {tags.map(tag => (
+            {tagsExpanded && tags.map(tag => (
               <div 
                 key={tag.id}
                 className={`nav-item ${activeFilter.type === 'tag' && activeFilter.id === tag.id ? 'active' : ''}`}
