@@ -41,6 +41,13 @@ const createMockApi = () => {
       folders.push(f)
       return f
     },
+    deleteFolder: async (id) => {
+      folders = folders.filter(f => f.id !== id)
+      notes.forEach(n => {
+        if (n.folder_id === id) n.folder_id = null
+      })
+      return true
+    },
     getNotes: async (params = {}) => {
       let filtered = [...notes]
       if (params.trashed) {
@@ -119,15 +126,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState({ type: 'all' })
 
-  // Layout & View states
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Layout & View states (defaults based on initial window size)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 850)
   const [notesListCollapsed, setNotesListCollapsed] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [viewMode, setViewMode] = useState('list') // 'list' | 'gallery'
-
-  // Ref to always have latest state in event listeners
-  const stateRef = useRef({ folders, activeFilter, isMaximized, sidebarCollapsed, notesListCollapsed })
-  stateRef.current = { folders, activeFilter, isMaximized, sidebarCollapsed, notesListCollapsed }
 
   // Load Folders & Stats
   const loadSidebarData = useCallback(async () => {
@@ -187,6 +190,17 @@ export default function App() {
     loadNotes()
   }, [activeFilter, searchQuery])
 
+  // Handle window resizing for responsive split view
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 780 && !sidebarCollapsed) {
+        setSidebarCollapsed(true)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [sidebarCollapsed])
+
   // Handlers
   const handleCreateFolder = async (name) => {
     try {
@@ -194,6 +208,19 @@ export default function App() {
       await loadSidebarData()
     } catch (err) {
       console.error('Error creating folder:', err)
+    }
+  }
+
+  const handleDeleteFolder = async (folderId) => {
+    try {
+      await api.deleteFolder(folderId)
+      if (activeFilter.type === 'folder' && activeFilter.id === folderId) {
+        setActiveFilter({ type: 'all' })
+      }
+      await loadSidebarData()
+      await loadNotes()
+    } catch (err) {
+      console.error('Error deleting folder:', err)
     }
   }
 
@@ -276,7 +303,7 @@ export default function App() {
     })
   }
 
-  // Robust Global Keyboard Shortcuts (Capture Phase)
+  // Global Keyboard Shortcuts (Capture Phase)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
@@ -307,7 +334,6 @@ export default function App() {
       }
     }
 
-    // Attach to capture phase so it triggers even if child has focus
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [folders, activeFilter])
@@ -322,6 +348,7 @@ export default function App() {
         activeFilter={activeFilter}
         setActiveFilter={setActiveFilter}
         onCreateFolder={handleCreateFolder}
+        onDeleteFolder={handleDeleteFolder}
         noteStats={noteStats}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(true)}

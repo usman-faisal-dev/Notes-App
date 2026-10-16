@@ -1,11 +1,46 @@
-/**
- * Utility to convert HTML from TipTap to Markdown and vice versa
- */
+import { marked } from 'marked'
 
+// Configure marked options
+marked.setOptions({
+  gfm: true,
+  breaks: false
+})
+
+/**
+ * Robust markdown to HTML converter using `marked`
+ * with TipTap checklist, bullets, and horizontal rule normalization
+ */
+export function markdownToHtml(md) {
+  if (!md) return ''
+
+  let rawHtml = marked.parse(md)
+
+  // Convert marked task list items into TipTap's taskList / taskItem schema
+  rawHtml = rawHtml.replace(/<li>\s*(?:<p>)?\s*<input (checked="")?\s*disabled=""\s*type="checkbox">\s*([\s\S]*?)(?:<\/p>)?\s*<\/li>/g, (match, checked, content) => {
+    const isChecked = Boolean(checked && checked.includes('checked'))
+    return `<li data-type="taskItem" data-checked="${isChecked}"><label><input type="checkbox" ${isChecked ? 'checked="checked"' : ''}><span></span></label><div><p>${content.trim()}</p></div></li>`
+  })
+
+  // Ensure task list items are inside <ul data-type="taskList">
+  rawHtml = rawHtml.replace(/<ul>(\s*<li data-type="taskItem"[\s\S]*?)<\/ul>/g, '<ul data-type="taskList">$1</ul>')
+
+  // Clean <hr> for TipTap StarterKit
+  rawHtml = rawHtml.replace(/<hr\s*\/?>/g, '<hr>')
+
+  return rawHtml
+}
+
+/**
+ * Converts TipTap HTML to standard clean Markdown
+ */
 export function htmlToMarkdown(html) {
   if (!html) return ''
 
-  // Create a temporary DOM parser
+  if (typeof DOMParser === 'undefined') {
+    // Fallback if running outside browser/DOM
+    return html.replace(/<[^>]+>/g, '').trim()
+  }
+
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
 
@@ -23,13 +58,13 @@ export function htmlToMarkdown(html) {
 
     switch (tag) {
       case 'h1':
-        return `\n# ${children.trim()}\n\n`
+        return `\n\n# ${children.trim()}\n\n`
       case 'h2':
-        return `\n## ${children.trim()}\n\n`
+        return `\n\n## ${children.trim()}\n\n`
       case 'h3':
-        return `\n### ${children.trim()}\n\n`
+        return `\n\n### ${children.trim()}\n\n`
       case 'p':
-        return `${children.trim()}\n\n`
+        return `\n\n${children.trim()}\n\n`
       case 'strong':
       case 'b':
         return `**${children}**`
@@ -50,24 +85,26 @@ export function htmlToMarkdown(html) {
         }
         return `\`${children}\``
       case 'pre':
-        return `\n\`\`\`\n${children.trim()}\n\`\`\`\n\n`
+        return `\n\n\`\`\`\n${children.trim()}\n\`\`\`\n\n`
       case 'blockquote':
-        return `\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`
+        return `\n\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`
       case 'ul':
-        return `\n${children}\n`
+        return `\n\n${children.trim()}\n\n`
       case 'ol':
-        return `\n${children}\n`
+        return `\n\n${children.trim()}\n\n`
       case 'li': {
-        const isTask = node.getAttribute('data-type') === 'taskItem' || node.parentNode.getAttribute('data-type') === 'taskList'
+        const isTask = node.getAttribute('data-type') === 'taskItem' || node.parentNode?.getAttribute('data-type') === 'taskList'
         if (isTask) {
           const checked = node.getAttribute('data-checked') === 'true'
           const checkbox = checked ? '[x]' : '[ ]'
           return `- ${checkbox} ${children.trim()}\n`
         }
-        return `- ${children.trim()}\n`
+        const isOrdered = node.parentNode?.tagName.toLowerCase() === 'ol'
+        const prefix = isOrdered ? '1. ' : '- '
+        return `${prefix}${children.trim()}\n`
       }
       case 'hr':
-        return '\n---\n\n'
+        return '\n\n---\n\n'
       case 'br':
         return '\n'
       default:
@@ -77,56 +114,6 @@ export function htmlToMarkdown(html) {
 
   const result = Array.from(doc.body.childNodes).map(processNode).join('')
   return result.replace(/\n{3,}/g, '\n\n').trim()
-}
-
-export function markdownToHtml(md) {
-  if (!md) return ''
-
-  let html = md
-    // Escape basic html characters
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-
-  // Code blocks
-  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
-    return `<pre><code>${code.trim()}</code></pre>`
-  })
-
-  // Headers
-  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>')
-  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>')
-  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>')
-
-  // Blockquotes
-  html = html.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-
-  // Task lists
-  html = html.replace(/^- \[x\] (.*$)/gim, '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>$1</p></div></li></ul>')
-  html = html.replace(/^- \[ \] (.*$)/gim, '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>$1</p></div></li></ul>')
-
-  // Unordered list
-  html = html.replace(/^\- (.*$)/gim, '<ul><li>$1</li></ul>')
-
-  // Bold / Italic / Strike / Highlight
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  html = html.replace(/~~(.*?)~~/g, '<s>$1</s>')
-  html = html.replace(/==(.*?)==/g, '<mark>$1</mark>')
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-
-  // Wrap loose lines in <p>
-  const lines = html.split('\n')
-  const wrapped = lines.map(line => {
-    const trimmed = line.trim()
-    if (!trimmed) return ''
-    if (trimmed.startsWith('<h') || trimmed.startsWith('<ul') || trimmed.startsWith('<pre') || trimmed.startsWith('<blockquote')) {
-      return trimmed
-    }
-    return `<p>${trimmed}</p>`
-  }).filter(Boolean).join('')
-
-  return wrapped
 }
 
 export async function copyToClipboard(text) {

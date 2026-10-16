@@ -9,7 +9,8 @@ import {
   StickyNote, 
   ChevronDown, 
   ChevronRight, 
-  PanelLeftClose
+  PanelLeftClose,
+  AlertTriangle
 } from 'lucide-react'
 
 export default function Sidebar({ 
@@ -18,11 +19,13 @@ export default function Sidebar({
   activeFilter, 
   setActiveFilter, 
   onCreateFolder, 
+  onDeleteFolder,
   noteStats, 
   isCollapsed, 
   onToggleCollapse 
 }) {
   const [showFolderModal, setShowFolderModal] = useState(false)
+  const [folderToDelete, setFolderToDelete] = useState(null)
   const [newFolderName, setNewFolderName] = useState('')
   const [foldersExpanded, setFoldersExpanded] = useState(true)
   const [tagsExpanded, setTagsExpanded] = useState(true)
@@ -33,6 +36,13 @@ export default function Sidebar({
     onCreateFolder(newFolderName.trim())
     setNewFolderName('')
     setShowFolderModal(false)
+  }
+
+  const handleConfirmDeleteFolder = () => {
+    if (folderToDelete) {
+      onDeleteFolder(folderToDelete.id)
+      setFolderToDelete(null)
+    }
   }
 
   if (isCollapsed) return null
@@ -121,9 +131,23 @@ export default function Sidebar({
               <Folder size={16} color={folder.color || '#ffd60a'} />
               <span>{folder.name}</span>
             </div>
-            {folder.note_count > 0 && (
-              <span className="nav-item-count">{folder.note_count}</span>
-            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {folder.note_count > 0 && (
+                <span className="nav-item-count">{folder.note_count}</span>
+              )}
+              {/* Delete Folder Button */}
+              <button
+                className="folder-delete-btn"
+                title={`Delete Folder "${folder.name}"`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setFolderToDelete(folder)
+                }}
+              >
+                <Trash2 size={13} color="var(--accent-red)" />
+              </button>
+            </div>
           </div>
         ))}
 
@@ -163,6 +187,7 @@ export default function Sidebar({
         </button>
       </div>
 
+      {/* New Folder Modal */}
       {showFolderModal && (
         <div className="modal-overlay" onClick={() => setShowFolderModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -189,6 +214,38 @@ export default function Sidebar({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Folder Confirmation Modal */}
+      {folderToDelete && (
+        <div className="modal-overlay" onClick={() => setFolderToDelete(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <AlertTriangle size={20} color="var(--accent-red)" />
+              <h3 className="modal-title" style={{ margin: 0 }}>Delete Folder</h3>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+              Are you sure you want to delete <strong>"{folderToDelete.name}"</strong>? Notes in this folder will not be deleted and will remain in <em>All Notes</em>.
+            </p>
+            <div className="modal-actions">
+              <button 
+                type="button" 
+                className="btn-secondary"
+                onClick={() => setFolderToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn-primary" 
+                style={{ background: 'var(--accent-red)', color: '#fff' }}
+                onClick={handleConfirmDeleteFolder}
+              >
+                Delete Folder
+              </button>
+            </div>
           </div>
         </div>
       )}
