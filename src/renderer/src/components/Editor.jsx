@@ -82,8 +82,7 @@ export default function Editor({
     editorProps: {
       handlePaste: (view, event, slice) => {
         const text = event.clipboardData?.getData('text/plain')
-        // If pasted text contains markdown indicators like `# `, `- [ ]`, `**`, convert to HTML
-        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('**') || text.includes('```'))) {
+        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('- [x]') || text.includes('```') || text.includes('**'))) {
           const parsedHtml = markdownToHtml(text)
           editor?.commands.insertContent(parsedHtml)
           return true
@@ -152,6 +151,23 @@ export default function Editor({
     setShowMenu(false)
   }
 
+  // Explicit Paste as Markdown handler
+  const handlePasteMarkdown = async () => {
+    if (!editor || isReadOnly) return
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) {
+        const html = markdownToHtml(text)
+        editor.commands.insertContent(html)
+        showToast('Pasted as Markdown!')
+      }
+    } catch (err) {
+      console.error('Failed to paste markdown:', err)
+      showToast('Clipboard access denied')
+    }
+    setShowMenu(false)
+  }
+
   const handlePastePlainText = async () => {
     if (!editor || isReadOnly) return
     try {
@@ -162,6 +178,7 @@ export default function Editor({
       }
     } catch (err) {
       console.error('Failed to read clipboard:', err)
+      showToast('Clipboard access denied')
     }
     setShowMenu(false)
   }
@@ -191,15 +208,17 @@ export default function Editor({
     setShowMenu(false)
   }
 
+  const isSoloPane = sidebarCollapsed && notesListCollapsed
+
   if (!note) {
     return (
-      <main className="editor-panel">
+      <main className={`editor-panel ${isSoloPane ? 'with-traffic-lights' : ''}`}>
         <header className="editor-toolbar">
           <div className="toolbar-group">
             {sidebarCollapsed && (
               <button 
                 className="toolbar-btn" 
-                title="Toggle Sidebar" 
+                title="Toggle Sidebar (Cmd+\)" 
                 onClick={onToggleSidebar}
               >
                 <PanelLeft size={16} />
@@ -208,7 +227,7 @@ export default function Editor({
             {notesListCollapsed && (
               <button 
                 className="toolbar-btn" 
-                title="Toggle Note List" 
+                title="Toggle Note List (Cmd+Alt+S)" 
                 onClick={onToggleNotesList}
               >
                 <Columns size={16} />
@@ -244,14 +263,14 @@ export default function Editor({
     : ''
 
   return (
-    <main className={`editor-panel ${isMaximized ? 'maximized' : ''}`}>
+    <main className={`editor-panel ${isMaximized ? 'maximized' : ''} ${isSoloPane ? 'with-traffic-lights' : ''}`}>
       <header className="editor-toolbar">
         {/* Left Toolbar Items */}
         <div className="toolbar-group">
           {sidebarCollapsed && (
             <button 
               className="toolbar-btn" 
-              title="Toggle Sidebar" 
+              title="Show Sidebar (Cmd+\)" 
               onClick={onToggleSidebar}
             >
               <PanelLeft size={16} />
@@ -260,7 +279,7 @@ export default function Editor({
           {notesListCollapsed && (
             <button 
               className="toolbar-btn" 
-              title="Toggle Notes List" 
+              title="Show Notes List (Cmd+Alt+S)" 
               onClick={onToggleNotesList}
             >
               <Columns size={16} />
@@ -387,7 +406,7 @@ export default function Editor({
           {/* Maximize / Focus Mode Button */}
           <button
             className={`toolbar-btn ${isMaximized ? 'active' : ''}`}
-            title={isMaximized ? 'Exit Focus Mode' : 'Maximize Note (Focus Mode)'}
+            title={isMaximized ? 'Exit Focus Mode (Cmd+Shift+F)' : 'Maximize Note (Cmd+Shift+F)'}
             onClick={onToggleMaximize}
           >
             {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -413,11 +432,11 @@ export default function Editor({
             </>
           )}
 
-          {/* Markdown & Copy/Paste Options Dropdown */}
+          {/* Markdown & Clipboard Menu */}
           <div className="dropdown-container">
             <button
               className="toolbar-btn"
-              title="Markdown & Export Options"
+              title="Markdown & Clipboard Options"
               onClick={(e) => {
                 e.stopPropagation()
                 setShowMenu(!showMenu)
@@ -428,24 +447,39 @@ export default function Editor({
 
             {showMenu && (
               <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
-                <button className="dropdown-item" onClick={handleCopyMarkdown}>
+                {/* Paste as Markdown */}
+                <button className="dropdown-item" onClick={handlePasteMarkdown} disabled={isReadOnly}>
                   <div className="dropdown-item-left">
                     <FileCode size={14} color="var(--accent-yellow)" />
-                    <span>Copy as Markdown</span>
+                    <span>Paste as Markdown</span>
                   </div>
+                  <span className="dropdown-item-shortcut">⌘⇧M</span>
                 </button>
 
-                <button className="dropdown-item" onClick={handleCopyPlainText}>
-                  <div className="dropdown-item-left">
-                    <Copy size={14} />
-                    <span>Copy as Plain Text</span>
-                  </div>
-                </button>
-
+                {/* Paste as Plain Text */}
                 <button className="dropdown-item" onClick={handlePastePlainText} disabled={isReadOnly}>
                   <div className="dropdown-item-left">
                     <ClipboardPaste size={14} />
                     <span>Paste as Plain Text</span>
+                  </div>
+                  <span className="dropdown-item-shortcut">⌘⇧V</span>
+                </button>
+
+                <div className="dropdown-divider" />
+
+                {/* Copy as Markdown */}
+                <button className="dropdown-item" onClick={handleCopyMarkdown}>
+                  <div className="dropdown-item-left">
+                    <FileCode size={14} />
+                    <span>Copy as Markdown</span>
+                  </div>
+                </button>
+
+                {/* Copy as Plain Text */}
+                <button className="dropdown-item" onClick={handleCopyPlainText}>
+                  <div className="dropdown-item-left">
+                    <Copy size={14} />
+                    <span>Copy as Plain Text</span>
                   </div>
                 </button>
 
@@ -490,11 +524,14 @@ export default function Editor({
         </div>
       )}
 
-      <div className="editor-content-area">
-        <div className="note-date-header">
-          {formattedDate}
+      {/* 100% Width Scroll Container - Scrollbar is at the rightmost edge of the window! */}
+      <div className="editor-scroll-area">
+        <div className="editor-document-wrapper">
+          <div className="note-date-header">
+            {formattedDate}
+          </div>
+          <EditorContent editor={editor} />
         </div>
-        <EditorContent editor={editor} />
       </div>
     </main>
   )

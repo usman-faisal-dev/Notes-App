@@ -2,13 +2,13 @@ import React from 'react'
 import { 
   Search, 
   Pin, 
-  Plus, 
   Trash2, 
   RotateCcw, 
   List, 
-  LayoutGrid,
-  SquarePen,
-  PanelLeft
+  LayoutGrid, 
+  SquarePen, 
+  PanelLeft, 
+  Columns
 } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
 
@@ -44,33 +44,35 @@ export default function NotesList({
 }) {
   const isTrashView = activeFilter.type === 'trash'
 
+  if (isCollapsed) return null
+
   return (
-    <section className={`notes-list-panel ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="notes-top-toolbar window-drag-region">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <section className={`notes-list-panel ${sidebarCollapsed ? 'with-traffic-lights' : ''}`}>
+      <div className="notes-topbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {sidebarCollapsed && (
             <button 
               className="sidebar-action-btn"
-              title="Show Sidebar"
+              title="Show Sidebar (Cmd+\)"
               onClick={onToggleSidebar}
             >
               <PanelLeft size={16} />
             </button>
           )}
-          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>
             {activeFilter.name || (activeFilter.type === 'all' ? 'All Notes' : activeFilter.type === 'pinned' ? 'Pinned' : 'Trash')}
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           {!isTrashView ? (
             <button 
               className="toolbar-btn toolbar-btn-prominent"
               title="New Note (Cmd+N)"
               onClick={onCreateNote}
             >
-              <SquarePen size={15} />
-              <span style={{ fontSize: '12px' }}>New Note</span>
+              <SquarePen size={14} />
+              <span style={{ fontSize: '12px' }}>New</span>
             </button>
           ) : (
             notes.length > 0 && (
@@ -85,6 +87,14 @@ export default function NotesList({
               </button>
             )
           )}
+
+          <button
+            className="sidebar-action-btn"
+            title="Collapse Notes List (Cmd+Alt+S)"
+            onClick={onToggleCollapse}
+          >
+            <Columns size={15} />
+          </button>
         </div>
       </div>
 

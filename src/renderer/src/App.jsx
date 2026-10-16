@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import NotesList from './components/NotesList'
 import Editor from './components/Editor'
@@ -15,7 +15,7 @@ const createMockApi = () => {
       id: 'n1',
       folder_id: '1',
       title: 'Welcome to Open Notes',
-      content: '<h1>Welcome to Open Notes</h1><p>A native, open-source cross-platform notes app inspired by Apple Notes.</p><ul><li>Offline-first with SQLite</li><li>Rich text with TipTap</li><li>Runs smoothly on macOS and Windows</li></ul>',
+      content: '<h1>Welcome to Open Notes</h1><p>A native, open-source cross-platform notes app inspired by Apple Notes.</p><ul><li>Offline-first with local database</li><li>Rich text with TipTap</li><li>Runs smoothly on macOS and Windows</li></ul>',
       content_text: 'Welcome to Open Notes. A native, open-source cross-platform notes app inspired by Apple Notes.',
       is_pinned: 1,
       is_trashed: 0,
@@ -124,6 +124,10 @@ export default function App() {
   const [notesListCollapsed, setNotesListCollapsed] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [viewMode, setViewMode] = useState('list') // 'list' | 'gallery'
+
+  // Ref to always have latest state in event listeners
+  const stateRef = useRef({ folders, activeFilter, isMaximized, sidebarCollapsed, notesListCollapsed })
+  stateRef.current = { folders, activeFilter, isMaximized, sidebarCollapsed, notesListCollapsed }
 
   // Load Folders & Stats
   const loadSidebarData = useCallback(async () => {
@@ -259,34 +263,54 @@ export default function App() {
 
   // Toggle Maximize / Focus Mode
   const handleToggleMaximize = () => {
-    if (!isMaximized) {
-      setIsMaximized(true)
-      setSidebarCollapsed(true)
-      setNotesListCollapsed(true)
-    } else {
-      setIsMaximized(false)
-      setSidebarCollapsed(false)
-      setNotesListCollapsed(false)
-    }
+    setIsMaximized(prev => {
+      const next = !prev
+      if (next) {
+        setSidebarCollapsed(true)
+        setNotesListCollapsed(true)
+      } else {
+        setSidebarCollapsed(false)
+        setNotesListCollapsed(false)
+      }
+      return next
+    })
   }
 
-  // Global Keyboard Shortcuts (Cmd+N for New Note, Cmd+Shift+F for Maximize)
+  // Robust Global Keyboard Shortcuts (Capture Phase)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
 
-      if (isCmdOrCtrl && e.key === 'n' && !e.shiftKey) {
+      // Cmd+N: New Note
+      if (isCmdOrCtrl && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
+        e.stopPropagation()
         handleCreateNote()
-      } else if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'f') {
+      } 
+      // Cmd+Shift+F: Toggle Maximize Note
+      else if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
+        e.stopPropagation()
         handleToggleMaximize()
+      }
+      // Cmd+\: Toggle Sidebar
+      else if (isCmdOrCtrl && e.key === '\\') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSidebarCollapsed(prev => !prev)
+      }
+      // Cmd+Alt+S: Toggle Notes List
+      else if (isCmdOrCtrl && e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        e.stopPropagation()
+        setNotesListCollapsed(prev => !prev)
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [folders, activeFilter, isMaximized])
+    // Attach to capture phase so it triggers even if child has focus
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [folders, activeFilter])
 
   const activeNote = notes.find(n => n.id === selectedNoteId) || null
 
@@ -300,7 +324,7 @@ export default function App() {
         onCreateFolder={handleCreateFolder}
         noteStats={noteStats}
         isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onToggleCollapse={() => setSidebarCollapsed(true)}
       />
 
       <NotesList
@@ -317,9 +341,9 @@ export default function App() {
         viewMode={viewMode}
         setViewMode={setViewMode}
         isCollapsed={notesListCollapsed}
-        onToggleCollapse={() => setNotesListCollapsed(!notesListCollapsed)}
+        onToggleCollapse={() => setNotesListCollapsed(true)}
         sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onToggleSidebar={() => setSidebarCollapsed(false)}
       />
 
       <Editor
@@ -331,9 +355,9 @@ export default function App() {
         isMaximized={isMaximized}
         onToggleMaximize={handleToggleMaximize}
         sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onToggleSidebar={() => setSidebarCollapsed(false)}
         notesListCollapsed={notesListCollapsed}
-        onToggleNotesList={() => setNotesListCollapsed(!notesListCollapsed)}
+        onToggleNotesList={() => setNotesListCollapsed(false)}
       />
     </div>
   )

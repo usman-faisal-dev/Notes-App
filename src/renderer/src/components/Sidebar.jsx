@@ -5,10 +5,10 @@ import {
   Star, 
   Tag as TagIcon, 
   Plus, 
-  FolderPlus,
-  StickyNote,
-  ChevronDown,
-  ChevronRight,
+  FolderPlus, 
+  StickyNote, 
+  ChevronDown, 
+  ChevronRight, 
   PanelLeftClose
 } from 'lucide-react'
 
@@ -17,10 +17,10 @@ export default function Sidebar({
   tags, 
   activeFilter, 
   setActiveFilter, 
-  onCreateFolder,
-  noteStats,
-  isCollapsed,
-  onToggleCollapse
+  onCreateFolder, 
+  noteStats, 
+  isCollapsed, 
+  onToggleCollapse 
 }) {
   const [showFolderModal, setShowFolderModal] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -35,12 +35,15 @@ export default function Sidebar({
     setShowFolderModal(false)
   }
 
+  if (isCollapsed) return null
+
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="window-drag-region">
+    <aside className="sidebar">
+      {/* Top Bar with traffic light spacing on left and collapse button on right */}
+      <div className="sidebar-topbar">
         <button 
           className="sidebar-action-btn"
-          title="Collapse Sidebar"
+          title="Collapse Sidebar (Cmd+\)"
           onClick={onToggleCollapse}
         >
           <PanelLeftClose size={16} />
