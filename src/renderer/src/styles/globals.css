@@ -934,3 +934,202 @@ ul[data-type="taskList"] li > div {
     max-width: 260px;
   }
 }
+
+/* ========================================= */
+/* Context Menu & Submenu Styles             */
+/* ========================================= */
+.custom-context-menu {
+  background: rgba(34, 34, 38, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  min-width: 210px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  user-select: none;
+  animation: contextMenuFadeIn 0.1s cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes contextMenuFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.context-menu-item-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.context-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--accent-yellow);
+  color: #1a1a1a;
+}
+
+.context-menu-item:hover .context-menu-shortcut,
+.context-menu-item:hover .context-menu-arrow,
+.context-menu-item:hover .context-menu-icon {
+  color: #1a1a1a !important;
+}
+
+.context-menu-item.danger {
+  color: var(--accent-red);
+}
+
+.context-menu-item.danger:hover {
+  background: var(--accent-red);
+  color: #fff;
+}
+
+.context-menu-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.context-menu-item-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.context-menu-label {
+  font-weight: 450;
+}
+
+.context-menu-shortcut {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: inherit;
+  margin-left: 12px;
+}
+
+.context-menu-arrow {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-left: 12px;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 6px;
+}
+
+.custom-context-submenu {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  margin-left: 4px;
+  background: rgba(34, 34, 38, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  min-width: 190px;
+  max-height: 280px;
+  overflow-y: auto;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100000;
+}
+
+/* ========================================= */
+/* Table Styles in TipTap                    */
+/* ========================================= */
+.ProseMirror table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  overflow: hidden;
+  table-layout: fixed;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.ProseMirror td,
+.ProseMirror th {
+  border: 1px solid var(--border-color);
+  box-sizing: border-box;
+  min-width: 1em;
+  padding: 8px 12px;
+  position: relative;
+  vertical-align: top;
+}
+
+.ProseMirror th {
+  background-color: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ProseMirror .selectedCell:after {
+  background: rgba(255, 214, 10, 0.2);
+  content: "";
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.ProseMirror a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Lock badge for notes */
+.note-card-lock {
+  position: absolute;
+  top: 10px;
+  right: 28px;
+  color: var(--text-secondary);
+}
+
+/* Responsive Toolbar Improvements */
+.editor-toolbar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+}
+
+.editor-toolbar::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
+.toolbar-group {
+  flex-shrink: 0;
+}

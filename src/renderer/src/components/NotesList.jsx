@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { 
   Search, 
   Pin, 
@@ -8,9 +8,16 @@ import {
   LayoutGrid, 
   SquarePen, 
   PanelLeft, 
-  Columns
+  Columns,
+  Lock,
+  Unlock,
+  Copy,
+  Share2,
+  FolderInput,
+  Folder
 } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
+import ContextMenu from './ContextMenu'
 
 function formatNoteDate(timestamp) {
   if (!timestamp) return ''
@@ -29,6 +36,13 @@ export default function NotesList({
   selectedNoteId,
   onSelectNote,
   onCreateNote,
+  onDuplicateNote,
+  onTogglePin,
+  onToggleLock,
+  onMoveNote,
+  onShareNote,
+  onTrashNote,
+  folders,
   searchQuery,
   setSearchQuery,
   activeFilter,
@@ -42,7 +56,90 @@ export default function NotesList({
   sidebarCollapsed,
   onToggleSidebar
 }) {
+  const [contextMenu, setContextMenu] = useState(null)
   const isTrashView = activeFilter.type === 'trash'
+
+  const handleCardContextMenu = (e, note) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Select note on right click if not selected
+    if (selectedNoteId !== note.id) {
+      onSelectNote(note.id)
+    }
+
+    const isPinned = note.is_pinned === 1
+    const isLocked = note.is_locked === 1
+
+    const folderSubmenu = (folders || []).map(f => ({
+      label: f.name,
+      icon: <Folder size={14} color={f.color || '#ffd60a'} />,
+      disabled: note.folder_id === f.id,
+      action: () => onMoveNote(note.id, f.id)
+    }))
+
+    const menuItems = isTrashView ? [
+      {
+        label: 'Restore Note',
+        icon: <RotateCcw size={14} color="var(--accent-blue)" />,
+        action: () => onRestoreNote(note.id)
+      },
+      {
+        label: 'Delete Permanently',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        action: () => onPermanentDelete(note.id)
+      }
+    ] : [
+      {
+        label: isPinned ? 'Unpin Note' : 'Pin Note',
+        icon: <Pin size={14} color="var(--accent-yellow)" />,
+        shortcut: '⌥P',
+        action: () => onTogglePin(note)
+      },
+      {
+        label: isLocked ? 'Unlock Note' : 'Lock Note',
+        icon: isLocked ? <Unlock size={14} /> : <Lock size={14} />,
+        action: () => onToggleLock(note)
+      },
+      {
+        label: 'New Note',
+        icon: <SquarePen size={14} />,
+        shortcut: '⌘N',
+        action: () => onCreateNote()
+      },
+      {
+        label: 'Duplicate Note',
+        icon: <Copy size={14} />,
+        shortcut: '⌘D',
+        action: () => onDuplicateNote(note)
+      },
+      {
+        label: 'Share Note',
+        icon: <Share2 size={14} />,
+        action: () => onShareNote(note)
+      },
+      {
+        label: 'Move to...',
+        icon: <FolderInput size={14} />,
+        submenu: folderSubmenu.length > 0 ? folderSubmenu : [{ label: 'No other folders', disabled: true }]
+      },
+      { type: 'divider' },
+      {
+        label: 'Delete',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        shortcut: '⌫',
+        action: () => onTrashNote(note.id)
+      }
+    ]
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: menuItems
+    })
+  }
 
   if (isCollapsed) return null
 
@@ -162,9 +259,14 @@ export default function NotesList({
                   key={note.id}
                   className={`note-card ${isSelected ? 'active' : ''}`}
                   onClick={() => onSelectNote(note.id)}
+                  onContextMenu={(e) => handleCardContextMenu(e, note)}
                 >
                   {note.is_pinned === 1 && (
                     <Pin size={12} className="note-card-pin" fill="var(--accent-yellow)" />
+                  )}
+
+                  {note.is_locked === 1 && (
+                    <Lock size={12} className="note-card-lock" />
                   )}
                   
                   <h4 className="note-card-title">
@@ -222,9 +324,14 @@ export default function NotesList({
                   key={note.id}
                   className={`gallery-card ${isSelected ? 'active' : ''}`}
                   onClick={() => onSelectNote(note.id)}
+                  onContextMenu={(e) => handleCardContextMenu(e, note)}
                 >
                   {note.is_pinned === 1 && (
                     <Pin size={12} className="note-card-pin" fill="var(--accent-yellow)" />
+                  )}
+
+                  {note.is_locked === 1 && (
+                    <Lock size={12} className="note-card-lock" />
                   )}
 
                   <div className="gallery-card-preview-paper">
@@ -266,6 +373,16 @@ export default function NotesList({
           </div>
         )}
       </div>
+
+      {/* Right Click Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </section>
   )
 }

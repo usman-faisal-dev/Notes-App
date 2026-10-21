@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import NotesList from './components/NotesList'
 import Editor from './components/Editor'
+import { copyToClipboard, htmlToMarkdown } from './utils/markdown'
 
 // In-memory fallback if running in browser dev mode without Electron
 const createMockApi = () => {
@@ -18,6 +19,7 @@ const createMockApi = () => {
       content: '<h1>Welcome to Open Notes</h1><p>A native, open-source cross-platform notes app inspired by Apple Notes.</p><ul><li>Offline-first with local database</li><li>Rich text with TipTap</li><li>Runs smoothly on macOS and Windows</li></ul>',
       content_text: 'Welcome to Open Notes. A native, open-source cross-platform notes app inspired by Apple Notes.',
       is_pinned: 1,
+      is_locked: 0,
       is_trashed: 0,
       updated_at: Date.now()
     },
@@ -28,6 +30,7 @@ const createMockApi = () => {
       content: '<h2>Reverse Engineering Notes</h2><p>Notes.app on macOS uses a 3-tier prefix architecture: <code>NF*</code> for Data/Persistence, <code>IC*</code> for iCloud Mac UI, and <code>SY*</code> for Synapse AI integration.</p>',
       content_text: 'Reverse Engineering Notes. Notes.app on macOS uses a 3-tier prefix architecture...',
       is_pinned: 0,
+      is_locked: 0,
       is_trashed: 0,
       updated_at: Date.now() - 3600000
     }
@@ -70,10 +73,11 @@ const createMockApi = () => {
       const n = {
         id: String(Date.now()),
         folder_id: data?.folder_id || '1',
-        title: 'New Note',
-        content: '',
-        content_text: '',
-        is_pinned: 0,
+        title: data?.title || 'New Note',
+        content: data?.content || '',
+        content_text: data?.content_text || '',
+        is_pinned: data?.is_pinned || 0,
+        is_locked: 0,
         is_trashed: 0,
         updated_at: Date.now()
       }
@@ -224,17 +228,33 @@ export default function App() {
     }
   }
 
-  const handleCreateNote = async () => {
+  const handleCreateNote = async (data = {}) => {
     try {
       const folder_id = activeFilter.type === 'folder' ? activeFilter.id : (folders[0]?.id || null)
-      const newNote = await api.createNote({ folder_id })
+      const newNote = await api.createNote({ folder_id, ...data })
       await loadSidebarData()
       await loadNotes()
       if (newNote?.id) {
         setSelectedNoteId(newNote.id)
       }
+      return newNote
     } catch (err) {
       console.error('Error creating note:', err)
+    }
+  }
+
+  const handleDuplicateNote = async (note) => {
+    if (!note) return
+    try {
+      await handleCreateNote({
+        folder_id: note.folder_id,
+        title: `${note.title || 'Untitled'} (Copy)`,
+        content: note.content || '',
+        content_text: note.content_text || '',
+        is_pinned: 0
+      })
+    } catch (err) {
+      console.error('Error duplicating note:', err)
     }
   }
 
@@ -246,6 +266,28 @@ export default function App() {
     } catch (err) {
       console.error('Error updating note:', err)
     }
+  }
+
+  const handleTogglePin = async (note) => {
+    await handleUpdateNote({ id: note.id, is_pinned: note.is_pinned === 1 ? 0 : 1 })
+    loadNotes()
+  }
+
+  const handleToggleLock = async (note) => {
+    await handleUpdateNote({ id: note.id, is_locked: note.is_locked === 1 ? 0 : 1 })
+    loadNotes()
+  }
+
+  const handleMoveNote = async (noteId, targetFolderId) => {
+    await handleUpdateNote({ id: noteId, folder_id: targetFolderId })
+    await loadSidebarData()
+    await loadNotes()
+  }
+
+  const handleShareNote = async (note) => {
+    if (!note) return
+    const md = htmlToMarkdown(note.content || '')
+    await copyToClipboard(md || note.title)
   }
 
   const handleTrashNote = async (id) => {
@@ -359,6 +401,13 @@ export default function App() {
         selectedNoteId={selectedNoteId}
         onSelectNote={setSelectedNoteId}
         onCreateNote={handleCreateNote}
+        onDuplicateNote={handleDuplicateNote}
+        onTogglePin={handleTogglePin}
+        onToggleLock={handleToggleLock}
+        onMoveNote={handleMoveNote}
+        onShareNote={handleShareNote}
+        onTrashNote={handleTrashNote}
+        folders={folders}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         activeFilter={activeFilter}

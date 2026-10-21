@@ -6,6 +6,11 @@ import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
+import Link from '@tiptap/extension-link'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
 import { 
   Bold, 
   Italic, 
@@ -32,10 +37,16 @@ import {
   FileCode,
   SquarePen,
   PanelLeft,
-  Columns
+  Columns,
+  Table as TableIcon,
+  Link as LinkIcon,
+  Lock,
+  Unlock,
+  Scissors
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { htmlToMarkdown, markdownToHtml, copyToClipboard, exportAsFile } from '../utils/markdown'
+import ContextMenu from './ContextMenu'
 
 export default function Editor({ 
   note, 
@@ -54,6 +65,9 @@ export default function Editor({
   const fileInputRef = useRef(null)
   const [showMenu, setShowMenu] = useState(false)
   const [toastMessage, setToastMessage] = useState(null)
+  const [contextMenu, setContextMenu] = useState(null)
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
 
   const showToast = (msg) => {
     setToastMessage(msg)
@@ -73,16 +87,29 @@ export default function Editor({
       TaskItem.configure({
         nested: true
       }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }
+      }),
+      Table.configure({
+        resizable: true
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Placeholder.configure({
         placeholder: 'Type something or start with a title...'
       })
     ],
     content: note ? note.content : '',
-    editable: !isReadOnly,
+    editable: !isReadOnly && note?.is_locked !== 1,
     editorProps: {
-      handlePaste: (view, event, slice) => {
+      handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain')
-        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('- [x]') || text.includes('```') || text.includes('**'))) {
+        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('- [x]') || text.includes('```') || text.includes('**') || text.includes('---'))) {
           const parsedHtml = markdownToHtml(text)
           editor?.commands.insertContent(parsedHtml)
           return true
@@ -91,7 +118,7 @@ export default function Editor({
       }
     },
     onUpdate: ({ editor }) => {
-      if (!note || isReadOnly) return
+      if (!note || isReadOnly || note.is_locked === 1) return
 
       const html = editor.getHTML()
       const text = editor.getText()
@@ -121,9 +148,9 @@ export default function Editor({
       if (editor.getHTML() !== note.content) {
         editor.commands.setContent(note.content || '', false)
       }
-      editor.setEditable(!isReadOnly)
+      editor.setEditable(!isReadOnly && note.is_locked !== 1)
     }
-  }, [note?.id, isReadOnly])
+  }, [note?.id, note?.is_locked, isReadOnly])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -151,9 +178,8 @@ export default function Editor({
     setShowMenu(false)
   }
 
-  // Explicit Paste as Markdown handler
   const handlePasteMarkdown = async () => {
-    if (!editor || isReadOnly) return
+    if (!editor || isReadOnly || note?.is_locked === 1) return
     try {
       const text = await navigator.clipboard.readText()
       if (text) {
@@ -169,7 +195,7 @@ export default function Editor({
   }
 
   const handlePastePlainText = async () => {
-    if (!editor || isReadOnly) return
+    if (!editor || isReadOnly || note?.is_locked === 1) return
     try {
       const text = await navigator.clipboard.readText()
       if (text) {
@@ -183,6 +209,40 @@ export default function Editor({
     setShowMenu(false)
   }
 
+  const handleCut = async () => {
+    if (!editor || isReadOnly || note?.is_locked === 1) return
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
+    if (selectedText) {
+      await copyToClipboard(selectedText)
+      editor.commands.deleteSelection()
+      showToast('Cut to clipboard')
+    }
+  }
+
+  const handleAddTable = () => {
+    if (!editor || isReadOnly || note?.is_locked === 1) return
+    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+    showToast('Table inserted')
+  }
+
+  const handleApplyLink = (e) => {
+    e.preventDefault()
+    if (!editor) return
+    if (linkUrl.trim()) {
+      let href = linkUrl.trim()
+      if (!href.startsWith('http://') && !href.startsWith('https://')) {
+        href = `https://${href}`
+      }
+      editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+      showToast('Link added')
+    } else {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    }
+    setLinkUrl('')
+    setShowLinkModal(false)
+  }
+
   const handleExportMarkdown = () => {
     if (!editor || !note) return
     const md = htmlToMarkdown(editor.getHTML())
@@ -194,7 +254,7 @@ export default function Editor({
 
   const handleImportMarkdownFile = (e) => {
     const file = e.target.files?.[0]
-    if (!file || !editor || isReadOnly) return
+    if (!file || !editor || isReadOnly || note?.is_locked === 1) return
 
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -208,7 +268,82 @@ export default function Editor({
     setShowMenu(false)
   }
 
+  // Right-click inside Note context menu
+  const handleEditorContextMenu = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const isLocked = note?.is_locked === 1
+
+    const menuItems = [
+      {
+        label: 'Cut',
+        icon: <Scissors size={14} />,
+        shortcut: '⌘X',
+        disabled: isReadOnly || isLocked,
+        action: handleCut
+      },
+      {
+        label: 'Copy as Plain Text',
+        icon: <Copy size={14} />,
+        shortcut: '⌘C',
+        action: handleCopyPlainText
+      },
+      {
+        label: 'Copy as Markdown',
+        icon: <FileCode size={14} />,
+        action: handleCopyMarkdown
+      },
+      { type: 'divider' },
+      {
+        label: 'Paste as Plain Text',
+        icon: <ClipboardPaste size={14} />,
+        shortcut: '⌘⇧V',
+        disabled: isReadOnly || isLocked,
+        action: handlePastePlainText
+      },
+      {
+        label: 'Paste as Markdown',
+        icon: <FileText size={14} color="var(--accent-yellow)" />,
+        shortcut: '⌘⇧M',
+        disabled: isReadOnly || isLocked,
+        action: handlePasteMarkdown
+      },
+      { type: 'divider' },
+      {
+        label: 'Insert Checklist',
+        icon: <CheckSquare size={14} />,
+        disabled: isReadOnly || isLocked,
+        action: () => editor?.chain().focus().toggleTaskList().run()
+      },
+      {
+        label: 'Add Table',
+        icon: <TableIcon size={14} />,
+        disabled: isReadOnly || isLocked,
+        action: handleAddTable
+      },
+      {
+        label: 'Add Link',
+        icon: <LinkIcon size={14} />,
+        shortcut: '⌘K',
+        disabled: isReadOnly || isLocked,
+        action: () => {
+          const currentLink = editor?.getAttributes('link').href || ''
+          setLinkUrl(currentLink)
+          setShowLinkModal(true)
+        }
+      }
+    ]
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: menuItems
+    })
+  }
+
   const isSoloPane = sidebarCollapsed && notesListCollapsed
+  const isLocked = note?.is_locked === 1
 
   if (!note) {
     return (
@@ -265,7 +400,7 @@ export default function Editor({
   return (
     <main className={`editor-panel ${isMaximized ? 'maximized' : ''} ${isSoloPane ? 'with-traffic-lights' : ''}`}>
       <header className="editor-toolbar">
-        {/* Left Toolbar Items */}
+        {/* Navigation Tools */}
         <div className="toolbar-group">
           {sidebarCollapsed && (
             <button 
@@ -292,16 +427,19 @@ export default function Editor({
             onClick={onCreateNote}
           >
             <SquarePen size={15} />
-            <span style={{ fontSize: '12px' }}>New Note</span>
+            <span style={{ fontSize: '12px' }}>New</span>
           </button>
 
           <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+        </div>
 
+        {/* Text Style Tools */}
+        <div className="toolbar-group">
           <button
             className={`toolbar-btn ${editor?.isActive('bold') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleBold().run()}
             title="Bold (Cmd+B)"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Bold size={15} />
           </button>
@@ -309,7 +447,7 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('italic') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleItalic().run()}
             title="Italic (Cmd+I)"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Italic size={15} />
           </button>
@@ -317,7 +455,7 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('underline') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleUnderline().run()}
             title="Underline (Cmd+U)"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <UnderlineIcon size={15} />
           </button>
@@ -325,7 +463,7 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('strike') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleStrike().run()}
             title="Strikethrough"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Strikethrough size={15} />
           </button>
@@ -333,18 +471,21 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('highlight') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleHighlight().run()}
             title="Highlight"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Highlighter size={15} />
           </button>
 
           <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+        </div>
 
+        {/* Headings & Structure */}
+        <div className="toolbar-group">
           <button
             className={`toolbar-btn ${editor?.isActive('heading', { level: 1 }) ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
             title="Title (H1)"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Heading1 size={15} />
           </button>
@@ -352,18 +493,29 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('heading', { level: 2 }) ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
             title="Heading (H2)"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Heading2 size={15} />
           </button>
 
           <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+        </div>
 
+        {/* Lists & Inserts (Checklist, Table, Link, Code, Quote) */}
+        <div className="toolbar-group">
+          <button
+            className={`toolbar-btn ${editor?.isActive('taskList') ? 'active' : ''}`}
+            onClick={() => editor?.chain().focus().toggleTaskList().run()}
+            title="Checklist"
+            disabled={isReadOnly || isLocked}
+          >
+            <CheckSquare size={15} />
+          </button>
           <button
             className={`toolbar-btn ${editor?.isActive('bulletList') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleBulletList().run()}
             title="Bullet List"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <List size={15} />
           </button>
@@ -371,23 +523,35 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('orderedList') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleOrderedList().run()}
             title="Numbered List"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <ListOrdered size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('taskList') ? 'active' : ''}`}
-            onClick={() => editor?.chain().focus().toggleTaskList().run()}
-            title="Checklist"
-            disabled={isReadOnly}
+            className={`toolbar-btn ${editor?.isActive('table') ? 'active' : ''}`}
+            onClick={handleAddTable}
+            title="Add Table"
+            disabled={isReadOnly || isLocked}
           >
-            <CheckSquare size={15} />
+            <TableIcon size={15} />
+          </button>
+          <button
+            className={`toolbar-btn ${editor?.isActive('link') ? 'active' : ''}`}
+            onClick={() => {
+              const currentLink = editor?.getAttributes('link').href || ''
+              setLinkUrl(currentLink)
+              setShowLinkModal(true)
+            }}
+            title="Add Link (Cmd+K)"
+            disabled={isReadOnly || isLocked}
+          >
+            <LinkIcon size={15} />
           </button>
           <button
             className={`toolbar-btn ${editor?.isActive('blockquote') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleBlockquote().run()}
             title="Quote"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Quote size={15} />
           </button>
@@ -395,14 +559,16 @@ export default function Editor({
             className={`toolbar-btn ${editor?.isActive('codeBlock') ? 'active' : ''}`}
             onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
             title="Code Block"
-            disabled={isReadOnly}
+            disabled={isReadOnly || isLocked}
           >
             <Code size={15} />
           </button>
         </div>
 
-        {/* Right Toolbar Items */}
+        {/* Note Actions & More */}
         <div className="toolbar-group">
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+
           {/* Maximize / Focus Mode Button */}
           <button
             className={`toolbar-btn ${isMaximized ? 'active' : ''}`}
@@ -414,6 +580,7 @@ export default function Editor({
 
           {!isReadOnly && (
             <>
+              {/* Pin Note */}
               <button
                 className={`toolbar-btn ${note.is_pinned === 1 ? 'active' : ''}`}
                 title={note.is_pinned === 1 ? 'Unpin Note' : 'Pin Note'}
@@ -422,6 +589,19 @@ export default function Editor({
                 <Pin size={15} fill={note.is_pinned === 1 ? 'var(--accent-yellow)' : 'none'} />
               </button>
 
+              {/* Lock Note */}
+              <button
+                className={`toolbar-btn ${isLocked ? 'active' : ''}`}
+                title={isLocked ? 'Unlock Note' : 'Lock Note'}
+                onClick={() => {
+                  onUpdateNote({ id: note.id, is_locked: isLocked ? 0 : 1 })
+                  showToast(isLocked ? 'Note Unlocked' : 'Note Locked')
+                }}
+              >
+                {isLocked ? <Lock size={15} color="var(--accent-yellow)" /> : <Unlock size={15} />}
+              </button>
+
+              {/* Trash Note */}
               <button
                 className="toolbar-btn"
                 title="Move to Trash"
@@ -448,7 +628,7 @@ export default function Editor({
             {showMenu && (
               <div className="dropdown-menu" onClick={(e) => e.stopPropagation()}>
                 {/* Paste as Markdown */}
-                <button className="dropdown-item" onClick={handlePasteMarkdown} disabled={isReadOnly}>
+                <button className="dropdown-item" onClick={handlePasteMarkdown} disabled={isReadOnly || isLocked}>
                   <div className="dropdown-item-left">
                     <FileCode size={14} color="var(--accent-yellow)" />
                     <span>Paste as Markdown</span>
@@ -457,7 +637,7 @@ export default function Editor({
                 </button>
 
                 {/* Paste as Plain Text */}
-                <button className="dropdown-item" onClick={handlePastePlainText} disabled={isReadOnly}>
+                <button className="dropdown-item" onClick={handlePastePlainText} disabled={isReadOnly || isLocked}>
                   <div className="dropdown-item-left">
                     <ClipboardPaste size={14} />
                     <span>Paste as Plain Text</span>
@@ -495,7 +675,7 @@ export default function Editor({
                 <button 
                   className="dropdown-item" 
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || isLocked}
                 >
                   <div className="dropdown-item-left">
                     <Upload size={14} />
@@ -524,15 +704,59 @@ export default function Editor({
         </div>
       )}
 
-      {/* 100% Width Scroll Container - Scrollbar is at the rightmost edge of the window! */}
-      <div className="editor-scroll-area">
+      {/* 100% Width Scroll Container - Scrollbar is at the rightmost edge of the window */}
+      <div 
+        className="editor-scroll-area"
+        onContextMenu={handleEditorContextMenu}
+      >
         <div className="editor-document-wrapper">
           <div className="note-date-header">
-            {formattedDate}
+            {formattedDate} {isLocked ? '• 🔒 Locked' : ''}
           </div>
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {/* Context Menu inside note */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Link Input Modal */}
+      {showLinkModal && (
+        <div className="modal-overlay" onClick={() => setShowLinkModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Add / Edit Link</h3>
+            <form onSubmit={handleApplyLink}>
+              <input 
+                type="text" 
+                className="modal-input" 
+                placeholder="https://example.com"
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+              />
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn-secondary"
+                  onClick={() => setShowLinkModal(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Apply Link
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
