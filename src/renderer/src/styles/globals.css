@@ -1133,3 +1133,79 @@ ul[data-type="taskList"] li > div {
 .toolbar-group {
   flex-shrink: 0;
 }
+
+/* Folder Action Buttons (Rename & Delete) */
+.folder-action-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+  -webkit-app-region: no-drag !important;
+}
+
+.nav-item:hover .folder-action-btn {
+  display: flex;
+}
+
+.folder-action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.folder-action-btn.delete-btn:hover {
+  background: rgba(255, 69, 58, 0.25);
+}
+
+
+/* Toolbar 3-Section Layout */
+.toolbar-section-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag !important;
+}
+
+.toolbar-section-center {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag !important;
+}
+
+.toolbar-section-center::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-section-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  -webkit-app-region: no-drag !important;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-color);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.table-toolbar-group {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}

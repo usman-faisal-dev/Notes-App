@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -11,6 +11,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
+import { DOMSerializer } from '@tiptap/pm/model'
 import { 
   Bold, 
   Italic, 
@@ -42,11 +43,50 @@ import {
   Link as LinkIcon,
   Lock,
   Unlock,
-  Scissors
+  Scissors,
+  Share2,
+  PlusSquare,
+  MinusSquare,
+  Trash
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { htmlToMarkdown, markdownToHtml, copyToClipboard, exportAsFile } from '../utils/markdown'
+import { htmlToMarkdown, markdownToHtml, copyToClipboard, exportAsFile, tableToPlainText } from '../utils/markdown'
 import ContextMenu from './ContextMenu'
+
+
+function getActiveTableElement(editor) {
+  if (!editor) return null
+  try {
+    const sel = window.getSelection()
+    if (sel && sel.anchorNode) {
+      const el = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement
+      const table = el?.closest('table')
+      if (table) return table
+    }
+  } catch (e) {}
+
+  try {
+    const { state, view } = editor
+    const { $from } = state.selection
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type.name === 'table') {
+        const dom = view.nodeDOM($from.before(d))
+        if (dom && (dom.nodeName === 'TABLE' || dom.tagName === 'TABLE')) return dom
+        if (dom?.querySelector) {
+          const t = dom.querySelector('table')
+          if (t) return t
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const activeCell = document.querySelector('.ProseMirror .selectedCell, .ProseMirror td:focus-within, .ProseMirror th:focus-within')
+    if (activeCell) return activeCell.closest('table')
+  } catch (e) {}
+
+  return null
+}
 
 export default function Editor({ 
   note, 
@@ -63,16 +103,250 @@ export default function Editor({
 }) {
   const saveTimeoutRef = useRef(null)
   const fileInputRef = useRef(null)
+  const editorRef = useRef(null)
   const [showMenu, setShowMenu] = useState(false)
   const [toastMessage, setToastMessage] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
 
-  const showToast = (msg) => {
+  const showToast = useCallback((msg) => {
     setToastMessage(msg)
     setTimeout(() => setToastMessage(null), 2500)
-  }
+  }, [])
+
+  // Helper to extract selected text/HTML or fallback to document
+  const getSelectionData = useCallback((editorInstance) => {
+    if (!editorInstance) return { hasSelection: false, text: '', markdown: '' }
+    const { state } = editorInstance
+    const { from, to, empty } = state.selection
+
+    const tableEl = getActiveTableElement(editorInstance)
+
+    if (empty) {
+      return {
+        hasSelection: false,
+        tableEl,
+        tableText: tableEl ? tableToPlainText(tableEl) : '',
+        tableMarkdown: tableEl ? htmlToMarkdown(tableEl.outerHTML) : '',
+        text: editorInstance.getText(),
+        markdown: htmlToMarkdown(editorInstance.getHTML())
+      }
+    }
+
+    // Exact user selection
+    let text = ''
+    let markdown = ''
+    try {
+      const slice = state.selection.content()
+      const fragment = DOMSerializer.fromSchema(state.schema).serializeFragment(slice.content)
+      const tempDiv = document.createElement('div')
+      tempDiv.appendChild(fragment)
+
+      const containsTable = tempDiv.querySelector('table')
+      if (containsTable) {
+        text = tableToPlainText(containsTable)
+      } else {
+        text = tempDiv.innerText || state.doc.textBetween(from, to, '\n')
+      }
+      markdown = htmlToMarkdown(tempDiv.innerHTML)
+    } catch (e) {
+      text = state.doc.textBetween(from, to, '\n')
+      markdown = text
+    }
+
+    return {
+      hasSelection: true,
+      tableEl,
+      tableText: tableEl ? tableToPlainText(tableEl) : '',
+      tableMarkdown: tableEl ? htmlToMarkdown(tableEl.outerHTML) : '',
+      text,
+      markdown
+    }
+  }, [])
+
+  // Open Context Menu inside Note
+  const triggerEditorContextMenu = useCallback((event, editorInstance) => {
+    if (event) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const clientX = event?.clientX ?? window.innerWidth / 2
+    const clientY = event?.clientY ?? window.innerHeight / 2
+
+    const isLocked = note?.is_locked === 1
+    const isInTable = editorInstance?.isActive('table')
+    const sel = getSelectionData(editorInstance)
+
+    const menuItems = [
+      {
+        label: 'Cut',
+        icon: <Scissors size={14} />,
+        shortcut: '⌘X',
+        disabled: isReadOnly || isLocked || !sel.hasSelection,
+        action: async () => {
+          if (!editorInstance) return
+          await copyToClipboard(sel.text)
+          editorInstance.commands.deleteSelection()
+          showToast('Cut selection')
+        }
+      },
+      {
+        label: sel.hasSelection ? 'Copy Selection as Text' : 'Copy as Plain Text',
+        icon: <Copy size={14} />,
+        shortcut: '⌘C',
+        action: async () => {
+          await copyToClipboard(sel.text)
+          showToast(sel.hasSelection ? 'Copied selected text' : 'Copied note as plain text')
+        }
+      },
+      {
+        label: sel.hasSelection ? 'Copy Selection as Markdown' : 'Copy as Markdown',
+        icon: <FileCode size={14} />,
+        action: async () => {
+          await copyToClipboard(sel.markdown)
+          showToast(sel.hasSelection ? 'Copied selected Markdown' : 'Copied note as Markdown')
+        }
+      },
+      { type: 'divider' },
+      {
+        label: 'Paste as Plain Text',
+        icon: <ClipboardPaste size={14} />,
+        shortcut: '⌘⇧V',
+        disabled: isReadOnly || isLocked,
+        action: async () => {
+          try {
+            const text = await navigator.clipboard.readText()
+            if (text && editorInstance) {
+              editorInstance.commands.insertContent(text)
+              showToast('Pasted plain text')
+            }
+          } catch (err) {
+            console.error('Failed to paste:', err)
+          }
+        }
+      },
+      {
+        label: 'Paste as Markdown',
+        icon: <FileText size={14} color="var(--accent-yellow)" />,
+        shortcut: '⌘⇧M',
+        disabled: isReadOnly || isLocked,
+        action: async () => {
+          try {
+            const text = await navigator.clipboard.readText()
+            if (text && editorInstance) {
+              const html = markdownToHtml(text)
+              editorInstance.commands.insertContent(html)
+              showToast('Pasted as Markdown!')
+            }
+          } catch (err) {
+            console.error('Failed to paste markdown:', err)
+          }
+        }
+      },
+      { type: 'divider' }
+    ]
+
+    // Table operations if cursor is inside a table
+    if (isInTable) {
+      menuItems.push(
+        { type: 'divider' },
+        {
+          label: 'Copy Table as Markdown',
+          icon: <FileCode size={14} color="var(--accent-yellow)" />,
+          action: async () => {
+            const tableEl = sel.tableEl || getActiveTableElement(editorInstance)
+            const md = tableEl ? htmlToMarkdown(tableEl.outerHTML) : sel.tableMarkdown
+            if (md) {
+              await copyToClipboard(md)
+              showToast('Table copied as Markdown!')
+            } else {
+              showToast('Could not copy table')
+            }
+          }
+        },
+        {
+          label: 'Copy Table as Plain Text (TSV)',
+          icon: <Copy size={14} />,
+          action: async () => {
+            const tableEl = sel.tableEl || getActiveTableElement(editorInstance)
+            const txt = tableEl ? tableToPlainText(tableEl) : sel.tableText
+            if (txt) {
+              await copyToClipboard(txt)
+              showToast('Table copied as Plain Text (TSV)!')
+            } else {
+              showToast('Could not copy table')
+            }
+          }
+        },
+        { type: 'divider' },
+        {
+          label: 'Add Row Below',
+          icon: <PlusSquare size={14} />,
+          disabled: isReadOnly || isLocked,
+          action: () => editorInstance?.chain().focus().addRowAfter().run()
+        },
+        {
+          label: 'Add Column Right',
+          icon: <PlusSquare size={14} />,
+          disabled: isReadOnly || isLocked,
+          action: () => editorInstance?.chain().focus().addColumnAfter().run()
+        },
+        {
+          label: 'Delete Row',
+          icon: <MinusSquare size={14} />,
+          disabled: isReadOnly || isLocked,
+          action: () => editorInstance?.chain().focus().deleteRow().run()
+        },
+        {
+          label: 'Delete Column',
+          icon: <MinusSquare size={14} />,
+          disabled: isReadOnly || isLocked,
+          action: () => editorInstance?.chain().focus().deleteColumn().run()
+        },
+        {
+          label: 'Delete Table',
+          icon: <Trash size={14} />,
+          danger: true,
+          disabled: isReadOnly || isLocked,
+          action: () => editorInstance?.chain().focus().deleteTable().run()
+        }
+      )
+    }
+
+    menuItems.push(
+      {
+        label: 'Insert Checklist',
+        icon: <CheckSquare size={14} />,
+        disabled: isReadOnly || isLocked,
+        action: () => editorInstance?.chain().focus().toggleTaskList().run()
+      },
+      {
+        label: 'Add Table',
+        icon: <TableIcon size={14} />,
+        disabled: isReadOnly || isLocked,
+        action: () => editorInstance?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+      },
+      {
+        label: 'Add Link',
+        icon: <LinkIcon size={14} />,
+        shortcut: '⌘K',
+        disabled: isReadOnly || isLocked,
+        action: () => {
+          const currentLink = editorInstance?.getAttributes('link').href || ''
+          setLinkUrl(currentLink)
+          setShowLinkModal(true)
+        }
+      }
+    )
+
+    setContextMenu({
+      x: clientX,
+      y: clientY,
+      items: menuItems
+    })
+  }, [note?.is_locked, isReadOnly, getSelectionData, showToast])
 
   const editor = useEditor({
     extensions: [
@@ -107,11 +381,44 @@ export default function Editor({
     content: note ? note.content : '',
     editable: !isReadOnly && note?.is_locked !== 1,
     editorProps: {
+      handleDOMEvents: {
+        contextmenu: (view, event) => {
+          triggerEditorContextMenu(event, editorRef.current)
+          return true
+        },
+        copy: (view, event) => {
+          const { state } = view
+          const { from, to, empty } = state.selection
+          if (empty) return false
+
+          try {
+            const slice = state.selection.content()
+            const fragment = DOMSerializer.fromSchema(state.schema).serializeFragment(slice.content)
+            const tempDiv = document.createElement('div')
+            tempDiv.appendChild(fragment)
+
+            const containsTable = tempDiv.querySelector('table')
+            let plainText = ''
+            if (containsTable) {
+              plainText = tableToPlainText(containsTable)
+            } else {
+              plainText = tempDiv.innerText || state.doc.textBetween(from, to, '\n')
+            }
+
+            event.clipboardData.setData('text/plain', plainText)
+            event.clipboardData.setData('text/html', tempDiv.innerHTML)
+            event.preventDefault()
+            return true
+          } catch (e) {
+            return false
+          }
+        }
+      },
       handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain')
-        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('- [x]') || text.includes('```') || text.includes('**') || text.includes('---'))) {
+        if (text && (text.includes('# ') || text.includes('- [ ]') || text.includes('- [x]') || text.includes('```') || text.includes('**') || text.includes('---') || text.includes('|'))) {
           const parsedHtml = markdownToHtml(text)
-          editor?.commands.insertContent(parsedHtml)
+          editorRef.current?.commands.insertContent(parsedHtml)
           return true
         }
         return false
@@ -142,6 +449,10 @@ export default function Editor({
     }
   }, [note?.id])
 
+  useEffect(() => {
+    editorRef.current = editor
+  }, [editor])
+
   // Sync content when note selection changes
   useEffect(() => {
     if (editor && note) {
@@ -164,17 +475,17 @@ export default function Editor({
   // Markdown Action Handlers
   const handleCopyMarkdown = async () => {
     if (!editor) return
-    const md = htmlToMarkdown(editor.getHTML())
-    await copyToClipboard(md)
-    showToast('Copied as Markdown!')
+    const sel = getSelectionData(editor)
+    await copyToClipboard(sel.markdown)
+    showToast(sel.hasSelection ? 'Copied selection as Markdown!' : 'Copied note as Markdown!')
     setShowMenu(false)
   }
 
   const handleCopyPlainText = async () => {
     if (!editor) return
-    const text = editor.getText()
-    await copyToClipboard(text)
-    showToast('Copied as Plain Text!')
+    const sel = getSelectionData(editor)
+    await copyToClipboard(sel.text)
+    showToast(sel.hasSelection ? 'Copied selection as plain text!' : 'Copied note as plain text!')
     setShowMenu(false)
   }
 
@@ -200,24 +511,13 @@ export default function Editor({
       const text = await navigator.clipboard.readText()
       if (text) {
         editor.commands.insertContent(text)
-        showToast('Pasted Plain Text')
+        showToast('Pasted plain text')
       }
     } catch (err) {
       console.error('Failed to read clipboard:', err)
       showToast('Clipboard access denied')
     }
     setShowMenu(false)
-  }
-
-  const handleCut = async () => {
-    if (!editor || isReadOnly || note?.is_locked === 1) return
-    const { from, to } = editor.state.selection
-    const selectedText = editor.state.doc.textBetween(from, to, ' ')
-    if (selectedText) {
-      await copyToClipboard(selectedText)
-      editor.commands.deleteSelection()
-      showToast('Cut to clipboard')
-    }
   }
 
   const handleAddTable = () => {
@@ -241,6 +541,13 @@ export default function Editor({
     }
     setLinkUrl('')
     setShowLinkModal(false)
+  }
+
+  const handleShareNote = async () => {
+    if (!editor || !note) return
+    const md = htmlToMarkdown(editor.getHTML())
+    await copyToClipboard(md || note.title)
+    showToast('Note copied to clipboard as Markdown! Ready to share.')
   }
 
   const handleExportMarkdown = () => {
@@ -268,82 +575,9 @@ export default function Editor({
     setShowMenu(false)
   }
 
-  // Right-click inside Note context menu
-  const handleEditorContextMenu = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    const isLocked = note?.is_locked === 1
-
-    const menuItems = [
-      {
-        label: 'Cut',
-        icon: <Scissors size={14} />,
-        shortcut: '⌘X',
-        disabled: isReadOnly || isLocked,
-        action: handleCut
-      },
-      {
-        label: 'Copy as Plain Text',
-        icon: <Copy size={14} />,
-        shortcut: '⌘C',
-        action: handleCopyPlainText
-      },
-      {
-        label: 'Copy as Markdown',
-        icon: <FileCode size={14} />,
-        action: handleCopyMarkdown
-      },
-      { type: 'divider' },
-      {
-        label: 'Paste as Plain Text',
-        icon: <ClipboardPaste size={14} />,
-        shortcut: '⌘⇧V',
-        disabled: isReadOnly || isLocked,
-        action: handlePastePlainText
-      },
-      {
-        label: 'Paste as Markdown',
-        icon: <FileText size={14} color="var(--accent-yellow)" />,
-        shortcut: '⌘⇧M',
-        disabled: isReadOnly || isLocked,
-        action: handlePasteMarkdown
-      },
-      { type: 'divider' },
-      {
-        label: 'Insert Checklist',
-        icon: <CheckSquare size={14} />,
-        disabled: isReadOnly || isLocked,
-        action: () => editor?.chain().focus().toggleTaskList().run()
-      },
-      {
-        label: 'Add Table',
-        icon: <TableIcon size={14} />,
-        disabled: isReadOnly || isLocked,
-        action: handleAddTable
-      },
-      {
-        label: 'Add Link',
-        icon: <LinkIcon size={14} />,
-        shortcut: '⌘K',
-        disabled: isReadOnly || isLocked,
-        action: () => {
-          const currentLink = editor?.getAttributes('link').href || ''
-          setLinkUrl(currentLink)
-          setShowLinkModal(true)
-        }
-      }
-    ]
-
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: menuItems
-    })
-  }
-
   const isSoloPane = sidebarCollapsed && notesListCollapsed
   const isLocked = note?.is_locked === 1
+  const isInTable = editor?.isActive('table') || Boolean(getActiveTableElement(editor))
 
   if (!note) {
     return (
@@ -400,8 +634,8 @@ export default function Editor({
   return (
     <main className={`editor-panel ${isMaximized ? 'maximized' : ''} ${isSoloPane ? 'with-traffic-lights' : ''}`}>
       <header className="editor-toolbar">
-        {/* Navigation Tools */}
-        <div className="toolbar-group">
+        {/* Left Section: Navigation & New Note */}
+        <div className="toolbar-section-left">
           {sidebarCollapsed && (
             <button 
               className="toolbar-btn" 
@@ -427,11 +661,12 @@ export default function Editor({
             onClick={onCreateNote}
           >
             <SquarePen size={15} />
-            <span style={{ fontSize: '12px' }}>New</span>
+            <span>New</span>
           </button>
-
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
         </div>
+
+        {/* Center Section: Formatting & Content Tools */}
+        <div className="toolbar-section-center">
 
         {/* Text Style Tools */}
         <div className="toolbar-group">
@@ -501,7 +736,7 @@ export default function Editor({
           <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
         </div>
 
-        {/* Lists & Inserts (Checklist, Table, Link, Code, Quote) */}
+        {/* Lists & Inserts */}
         <div className="toolbar-group">
           <button
             className={`toolbar-btn ${editor?.isActive('taskList') ? 'active' : ''}`}
@@ -528,7 +763,7 @@ export default function Editor({
             <ListOrdered size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('table') ? 'active' : ''}`}
+            className={`toolbar-btn ${isInTable ? 'active' : ''}`}
             onClick={handleAddTable}
             title="Add Table"
             disabled={isReadOnly || isLocked}
@@ -565,9 +800,82 @@ export default function Editor({
           </button>
         </div>
 
-        {/* Note Actions & More */}
-        <div className="toolbar-group">
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
+        {/* Dynamic Table Actions if in Table */}
+        {isInTable && (
+          <div className="toolbar-group" style={{ background: 'rgba(255, 255, 255, 0.06)', borderRadius: '6px', padding: '1px 4px' }}>
+            <button
+              className="toolbar-btn"
+              title="Add Row Below"
+              onClick={() => editor?.chain().focus().addRowAfter().run()}
+            >
+              <PlusSquare size={14} />
+              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Row</span>
+            </button>
+            <button
+              className="toolbar-btn"
+              title="Add Column Right"
+              onClick={() => editor?.chain().focus().addColumnAfter().run()}
+            >
+              <PlusSquare size={14} />
+              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Col</span>
+            </button>
+            <button
+              className="toolbar-btn"
+              title="Delete Row"
+              onClick={() => editor?.chain().focus().deleteRow().run()}
+            >
+              <MinusSquare size={14} />
+              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Row</span>
+            </button>
+            <button
+              className="toolbar-btn"
+              title="Delete Column"
+              onClick={() => editor?.chain().focus().deleteColumn().run()}
+            >
+              <MinusSquare size={14} />
+              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Col</span>
+            </button>
+            <button
+              className="toolbar-btn"
+              title="Copy Table as Markdown"
+              onClick={async () => {
+                const tableEl = getActiveTableElement(editorRef.current)
+                const md = tableEl ? htmlToMarkdown(tableEl.outerHTML) : ""
+                if (md) {
+                  await copyToClipboard(md)
+                  showToast("Table copied as Markdown!")
+                } else {
+                  showToast("Could not copy table")
+                }
+              }}
+            >
+              <FileCode size={14} color="var(--accent-yellow)" />
+              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Copy</span>
+            </button>
+            <button
+              className="toolbar-btn"
+              title="Delete Table"
+              style={{ color: 'var(--accent-red)' }}
+              onClick={() => editor?.chain().focus().deleteTable().run()}
+            >
+              <Trash size={14} />
+            </button>
+          </div>
+        )}
+
+        </div>
+
+        {/* Right Section: Actions & Utilities */}
+        <div className="toolbar-section-right">
+
+          {/* Share Note Button */}
+          <button
+            className="toolbar-btn"
+            title="Share Note (Copy Markdown)"
+            onClick={handleShareNote}
+          >
+            <Share2 size={15} />
+          </button>
 
           {/* Maximize / Focus Mode Button */}
           <button
@@ -707,7 +1015,7 @@ export default function Editor({
       {/* 100% Width Scroll Container - Scrollbar is at the rightmost edge of the window */}
       <div 
         className="editor-scroll-area"
-        onContextMenu={handleEditorContextMenu}
+        onContextMenu={(e) => triggerEditorContextMenu(e, editorRef.current)}
       >
         <div className="editor-document-wrapper">
           <div className="note-date-header">

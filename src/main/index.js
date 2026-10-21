@@ -1,3 +1,4 @@
+app.commandLine.appendSwitch('log-level', '3')
 import { app, shell, BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { join } from 'path'
 import fs from 'fs'

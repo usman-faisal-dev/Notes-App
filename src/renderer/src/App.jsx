@@ -44,6 +44,15 @@ const createMockApi = () => {
       folders.push(f)
       return f
     },
+    updateFolder: async ({ id, name, color, icon }) => {
+      const f = folders.find(x => x.id === id)
+      if (f) {
+        if (name !== undefined) f.name = name
+        if (color !== undefined) f.color = color
+        if (icon !== undefined) f.icon = icon
+      }
+      return f
+    },
     deleteFolder: async (id) => {
       folders = folders.filter(f => f.id !== id)
       notes.forEach(n => {
@@ -129,6 +138,12 @@ export default function App() {
   const [selectedNoteId, setSelectedNoteId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState({ type: 'all' })
+  const [appToast, setAppToast] = useState(null)
+
+  const showAppToast = useCallback((msg) => {
+    setAppToast(msg)
+    setTimeout(() => setAppToast(null), 2500)
+  }, [])
 
   // Layout & View states (defaults based on initial window size)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 850)
@@ -206,6 +221,29 @@ export default function App() {
   }, [sidebarCollapsed])
 
   // Handlers
+  const handleUpdateFolder = async ({ id, name }) => {
+    try {
+      await api.updateFolder({ id, name })
+      await loadSidebarData()
+      await loadNotes()
+      showAppToast(`Folder renamed to "${name}"`)
+    } catch (err) {
+      console.error("Error updating folder:", err)
+    }
+  }
+
+  const handleCreateNoteInFolder = async (folderId) => {
+    try {
+      const newNote = await api.createNote({ folder_id: folderId, title: "New Note", content: "" })
+      await loadSidebarData()
+      await loadNotes()
+      setSelectedNoteId(newNote.id)
+      showAppToast("Created note in folder")
+    } catch (err) {
+      console.error("Error creating note in folder:", err)
+    }
+  }
+
   const handleCreateFolder = async (name) => {
     try {
       await api.createFolder({ name })
@@ -287,7 +325,9 @@ export default function App() {
   const handleShareNote = async (note) => {
     if (!note) return
     const md = htmlToMarkdown(note.content || '')
-    await copyToClipboard(md || note.title)
+    const content = md || note.title || ''
+    await copyToClipboard(content)
+    showAppToast("Note copied to clipboard as Markdown! Ready to share.")
   }
 
   const handleTrashNote = async (id) => {
@@ -390,7 +430,9 @@ export default function App() {
         activeFilter={activeFilter}
         setActiveFilter={setActiveFilter}
         onCreateFolder={handleCreateFolder}
+        onUpdateFolder={handleUpdateFolder}
         onDeleteFolder={handleDeleteFolder}
+        onCreateNoteInFolder={handleCreateNoteInFolder}
         noteStats={noteStats}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(true)}
@@ -421,6 +463,12 @@ export default function App() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed(false)}
       />
+
+      {appToast && (
+        <div className="toast-notification">
+          <span>{appToast}</span>
+        </div>
+      )}
 
       <Editor
         note={activeNote}

@@ -1,68 +1,86 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function ContextMenu({ x, y, items, onClose }) {
   const menuRef = useRef(null)
   const [activeSubmenuIndex, setActiveSubmenuIndex] = useState(null)
-  const [adjustedPosition, setAdjustedPosition] = useState({ top: y, left: x })
+  const [position, setPosition] = useState({ top: y, left: x })
 
   useEffect(() => {
-    // Clamp position within window bounds
+    // Measure and clamp within viewport bounds
     if (menuRef.current) {
-      const menuRect = menuRef.current.getBoundingClientRect()
-      const windowWidth = window.innerWidth
-      const windowHeight = window.innerHeight
+      const rect = menuRef.current.getBoundingClientRect()
+      const winW = window.innerWidth
+      const winH = window.innerHeight
 
       let left = x
       let top = y
 
-      if (left + menuRect.width > windowWidth - 10) {
-        left = windowWidth - menuRect.width - 10
+      if (left + rect.width > winW - 12) {
+        left = Math.max(12, winW - rect.width - 12)
       }
-      if (top + menuRect.height > windowHeight - 10) {
-        top = windowHeight - menuRect.height - 10
+      if (top + rect.height > winH - 12) {
+        top = Math.max(12, winH - rect.height - 12)
       }
 
-      setAdjustedPosition({ top, left })
+      setPosition({ top, left })
     }
   }, [x, y])
 
-  // Close on outside click or Escape
+  // Attach outside click listener with safe delay so current right-click doesn't close it immediately
   useEffect(() => {
-    const handleDown = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+    let active = true
+
+    const handlePointerDown = (e) => {
+      // Ignore if clicking inside the menu or its submenus
+      if (menuRef.current && menuRef.current.contains(e.target)) {
+        return
+      }
+      onClose()
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
         onClose()
       }
     }
-    const handleKey = (e) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('mousedown', handleDown)
-    window.addEventListener('keydown', handleKey)
+
+    const timer = setTimeout(() => {
+      if (!active) return
+      window.addEventListener('pointerdown', handlePointerDown, true)
+      window.addEventListener('keydown', handleKeyDown, true)
+    }, 80)
+
     return () => {
-      window.removeEventListener('mousedown', handleDown)
-      window.removeEventListener('keydown', handleKey)
+      active = false
+      clearTimeout(timer)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [onClose])
 
-  return (
+  const menuElement = (
     <div
       ref={menuRef}
       className="custom-context-menu"
       style={{
-        top: `${adjustedPosition.top}px`,
-        left: `${adjustedPosition.left}px`,
+        top: `${position.top}px`,
+        left: `${position.left}px`,
         position: 'fixed',
-        zIndex: 99999
+        zIndex: 999999
       }}
       onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
     >
       {items.map((item, idx) => {
         if (item.type === 'divider') {
           return <div key={idx} className="context-menu-divider" />
         }
 
-        const hasSubmenu = item.submenu && item.submenu.length > 0
+        const hasSubmenu = Boolean(item.submenu && item.submenu.length > 0)
         const isSubmenuOpen = activeSubmenuIndex === idx
 
         return (
@@ -76,8 +94,8 @@ export default function ContextMenu({ x, y, items, onClose }) {
               className={`context-menu-item ${item.danger ? 'danger' : ''} ${item.disabled ? 'disabled' : ''}`}
               disabled={item.disabled}
               onClick={(e) => {
-                if (item.disabled) return
-                if (hasSubmenu) return
+                e.stopPropagation()
+                if (item.disabled || hasSubmenu) return
                 item.action?.(e)
                 onClose()
               }}
@@ -92,7 +110,10 @@ export default function ContextMenu({ x, y, items, onClose }) {
 
             {/* Submenu */}
             {hasSubmenu && isSubmenuOpen && (
-              <div className="custom-context-submenu">
+              <div 
+                className="custom-context-submenu"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {item.submenu.map((sub, sIdx) => {
                   if (sub.type === 'divider') {
                     return <div key={sIdx} className="context-menu-divider" />
@@ -103,6 +124,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
                       className="context-menu-item"
                       disabled={sub.disabled}
                       onClick={(e) => {
+                        e.stopPropagation()
                         if (sub.disabled) return
                         sub.action?.(e)
                         onClose()
@@ -123,4 +145,6 @@ export default function ContextMenu({ x, y, items, onClose }) {
       })}
     </div>
   )
+
+  return createPortal(menuElement, document.body)
 }

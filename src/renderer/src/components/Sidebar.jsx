@@ -10,8 +10,11 @@ import {
   ChevronDown, 
   ChevronRight, 
   PanelLeftClose,
-  AlertTriangle
+  AlertTriangle,
+  Pencil,
+  FilePlus
 } from 'lucide-react'
+import ContextMenu from './ContextMenu'
 
 export default function Sidebar({ 
   folders, 
@@ -19,16 +22,21 @@ export default function Sidebar({
   activeFilter, 
   setActiveFilter, 
   onCreateFolder, 
+  onUpdateFolder,
   onDeleteFolder,
+  onCreateNoteInFolder,
   noteStats, 
   isCollapsed, 
   onToggleCollapse 
 }) {
   const [showFolderModal, setShowFolderModal] = useState(false)
+  const [folderToRename, setFolderToRename] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
   const [folderToDelete, setFolderToDelete] = useState(null)
   const [newFolderName, setNewFolderName] = useState('')
   const [foldersExpanded, setFoldersExpanded] = useState(true)
   const [tagsExpanded, setTagsExpanded] = useState(true)
+  const [contextMenu, setContextMenu] = useState(null)
 
   const handleCreateFolder = (e) => {
     e.preventDefault()
@@ -38,11 +46,53 @@ export default function Sidebar({
     setShowFolderModal(false)
   }
 
+  const handleStartRename = (folder) => {
+    setFolderToRename(folder)
+    setRenameValue(folder.name)
+  }
+
+  const handleSaveRename = (e) => {
+    e.preventDefault()
+    if (!renameValue.trim() || !folderToRename) return
+    onUpdateFolder({ id: folderToRename.id, name: renameValue.trim() })
+    setFolderToRename(null)
+    setRenameValue('')
+  }
+
   const handleConfirmDeleteFolder = () => {
     if (folderToDelete) {
       onDeleteFolder(folderToDelete.id)
       setFolderToDelete(null)
     }
+  }
+
+  const handleFolderContextMenu = (e, folder) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: 'Rename Folder',
+          icon: <Pencil size={14} />,
+          action: () => handleStartRename(folder)
+        },
+        {
+          label: 'New Note in Folder',
+          icon: <FilePlus size={14} />,
+          action: () => onCreateNoteInFolder?.(folder.id)
+        },
+        { type: 'divider' },
+        {
+          label: 'Delete Folder',
+          icon: <Trash2 size={14} />,
+          danger: true,
+          action: () => setFolderToDelete(folder)
+        }
+      ]
+    })
   }
 
   if (isCollapsed) return null
@@ -126,26 +176,42 @@ export default function Sidebar({
             key={folder.id}
             className={`nav-item ${activeFilter.type === 'folder' && activeFilter.id === folder.id ? 'active' : ''}`}
             onClick={() => setActiveFilter({ type: 'folder', id: folder.id, name: folder.name })}
+            onContextMenu={(e) => handleFolderContextMenu(e, folder)}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              handleStartRename(folder)
+            }}
           >
             <div className="nav-item-left">
               <Folder size={16} color={folder.color || '#ffd60a'} />
               <span>{folder.name}</span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
               {folder.note_count > 0 && (
                 <span className="nav-item-count">{folder.note_count}</span>
               )}
+              {/* Rename Folder Button */}
+              <button
+                className="folder-action-btn"
+                title="Rename Folder"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStartRename(folder)
+                }}
+              >
+                <Pencil size={12} color="var(--text-secondary)" />
+              </button>
               {/* Delete Folder Button */}
               <button
-                className="folder-delete-btn"
-                title={`Delete Folder "${folder.name}"`}
+                className="folder-action-btn delete-btn"
+                title="Delete Folder"
                 onClick={(e) => {
                   e.stopPropagation()
                   setFolderToDelete(folder)
                 }}
               >
-                <Trash2 size={13} color="var(--accent-red)" />
+                <Trash2 size={12} color="var(--accent-red)" />
               </button>
             </div>
           </div>
@@ -218,6 +284,37 @@ export default function Sidebar({
         </div>
       )}
 
+      {/* Rename Folder Modal */}
+      {folderToRename && (
+        <div className="modal-overlay" onClick={() => setFolderToRename(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Rename Folder</h3>
+            <form onSubmit={handleSaveRename}>
+              <input 
+                type="text" 
+                className="modal-input" 
+                placeholder="New Folder Name"
+                autoFocus
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+              />
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn-secondary"
+                  onClick={() => setFolderToRename(null)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Rename
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Delete Folder Confirmation Modal */}
       {folderToDelete && (
         <div className="modal-overlay" onClick={() => setFolderToDelete(null)}>
@@ -248,6 +345,16 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Folder Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </aside>
   )

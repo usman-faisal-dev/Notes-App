@@ -141,6 +141,43 @@ export default function NotesList({
     })
   }
 
+  const handlePanelContextMenu = (e) => {
+    if (e.target.closest(".note-card")) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (isTrashView) {
+      if (notes.length > 0) {
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          items: [
+            {
+              label: "Empty Trash",
+              icon: <Trash2 size={14} />,
+              danger: true,
+              action: () => onEmptyTrash?.()
+            }
+          ]
+        })
+      }
+      return
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: "New Note",
+          icon: <SquarePen size={14} />,
+          shortcut: "⌘N",
+          action: () => onCreateNote()
+        }
+      ]
+    })
+  }
+
   if (isCollapsed) return null
 
   return (
@@ -231,7 +268,7 @@ export default function NotesList({
         </div>
       </div>
 
-      <div className="notes-items-container">
+      <div className="notes-items-container" onContextMenu={handlePanelContextMenu}>
         {notes.length === 0 ? (
           <div className="empty-state" style={{ height: '240px' }}>
             <span className="empty-state-text">No Notes</span>

@@ -8,7 +8,7 @@ marked.setOptions({
 
 /**
  * Robust markdown to HTML converter using `marked`
- * with TipTap checklist, bullets, and horizontal rule normalization
+ * with TipTap checklist, bullets, table, and horizontal rule normalization
  */
 export function markdownToHtml(md) {
   if (!md) return ''
@@ -32,17 +32,54 @@ export function markdownToHtml(md) {
 
 /**
  * Converts TipTap HTML to standard clean Markdown
+ * Handles Headings, Paragraphs, Lists, Tasks, Tables, Code, Quotes, HR
  */
 export function htmlToMarkdown(html) {
   if (!html) return ''
 
   if (typeof DOMParser === 'undefined') {
-    // Fallback if running outside browser/DOM
     return html.replace(/<[^>]+>/g, '').trim()
   }
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
+
+  function processTable(tableNode) {
+    const rows = Array.from(tableNode.querySelectorAll('tr'))
+    if (rows.length === 0) return ''
+
+    const tableMatrix = []
+    rows.forEach(row => {
+      const cells = Array.from(row.querySelectorAll('th, td')).map(cell => {
+        return processNode(cell).replace(/\n+/g, ' ').trim()
+      })
+      if (cells.length > 0) {
+        tableMatrix.push(cells)
+      }
+    })
+
+    if (tableMatrix.length === 0) return ''
+
+    const maxCols = Math.max(...tableMatrix.map(r => r.length))
+    // Normalize row lengths
+    tableMatrix.forEach(row => {
+      while (row.length < maxCols) row.push('')
+    })
+
+    const mdLines = []
+    // First row (header)
+    const headerRow = tableMatrix[0]
+    mdLines.push(`| ${headerRow.join(' | ')} |`)
+    // Separator row
+    mdLines.push(`| ${headerRow.map(() => '---').join(' | ')} |`)
+
+    // Data rows
+    for (let i = 1; i < tableMatrix.length; i++) {
+      mdLines.push(`| ${tableMatrix[i].join(' | ')} |`)
+    }
+
+    return `\n\n${mdLines.join('\n')}\n\n`
+  }
 
   function processNode(node) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -54,6 +91,11 @@ export function htmlToMarkdown(html) {
     }
 
     const tag = node.tagName.toLowerCase()
+
+    if (tag === 'table') {
+      return processTable(node)
+    }
+
     const children = Array.from(node.childNodes).map(processNode).join('')
 
     switch (tag) {
@@ -105,6 +147,17 @@ export function htmlToMarkdown(html) {
       }
       case 'hr':
         return '\n\n---\n\n'
+      case 'a': {
+        const href = node.getAttribute('href') || ''
+        return `[${children.trim()}](${href})`
+      }
+      case 'th':
+      case 'td':
+        return children.trim()
+      case 'tr':
+      case 'tbody':
+      case 'thead':
+        return children
       case 'br':
         return '\n'
       default:
@@ -114,6 +167,19 @@ export function htmlToMarkdown(html) {
 
   const result = Array.from(doc.body.childNodes).map(processNode).join('')
   return result.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
+ * Converts table to formatted TSV (Tab Separated Values) for clean plain-text clipboard pasting
+ */
+export function tableToPlainText(tableElement) {
+  if (!tableElement) return ''
+  const rows = Array.from(tableElement.querySelectorAll('tr'))
+  return rows.map(r => {
+    return Array.from(r.querySelectorAll('th, td'))
+      .map(c => c.textContent.replace(/[\n\r\t]+/g, ' ').trim())
+      .join('\t')
+  }).join('\n')
 }
 
 export async function copyToClipboard(text) {
