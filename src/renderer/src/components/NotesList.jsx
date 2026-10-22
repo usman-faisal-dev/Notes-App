@@ -14,7 +14,8 @@ import {
   Copy,
   Share2,
   FolderInput,
-  Folder
+  Folder,
+  AlertTriangle
 } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
 import ContextMenu from './ContextMenu'
@@ -57,6 +58,7 @@ export default function NotesList({
   onToggleSidebar
 }) {
   const [contextMenu, setContextMenu] = useState(null)
+  const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false)
   const isTrashView = activeFilter.type === 'trash'
 
   const handleCardContextMenu = (e, note) => {
@@ -156,7 +158,7 @@ export default function NotesList({
               label: "Empty Trash",
               icon: <Trash2 size={14} />,
               danger: true,
-              action: () => onEmptyTrash?.()
+              action: () => setShowEmptyTrashConfirm(true)
             }
           ]
         })
@@ -213,7 +215,7 @@ export default function NotesList({
               <button
                 className="sidebar-action-btn"
                 title="Empty Trash"
-                onClick={onEmptyTrash}
+                onClick={() => setShowEmptyTrashConfirm(true)}
                 style={{ color: 'var(--accent-red)', fontSize: '11px', display: 'flex', gap: '4px' }}
               >
                 <Trash2 size={13} />
@@ -412,6 +414,42 @@ export default function NotesList({
       </div>
 
       {/* Right Click Context Menu */}
+
+      {/* Empty Trash Confirmation Modal */}
+      {showEmptyTrashConfirm && (
+        <div className="modal-overlay" onClick={() => setShowEmptyTrashConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <AlertTriangle size={20} color="var(--accent-red)" />
+              <h3 className="modal-title" style={{ margin: 0 }}>Empty Trash?</h3>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+              All {notes.length} note{notes.length !== 1 ? 's' : ''} in the Trash will be permanently deleted. This action cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowEmptyTrashConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: 'var(--accent-red)', color: '#fff' }}
+                onClick={() => {
+                  onEmptyTrash?.()
+                  setShowEmptyTrashConfirm(false)
+                }}
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

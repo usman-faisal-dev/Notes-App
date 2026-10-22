@@ -266,7 +266,7 @@ button, input, select, textarea, .interactive {
 
 /* Extra spacing if sidebar is hidden so traffic lights don't overlap */
 .notes-list-panel.with-traffic-lights .notes-topbar {
-  padding-left: 78px;
+  padding-left: 82px;
 }
 
 .notes-list-header {
@@ -512,11 +512,13 @@ button, input, select, textarea, .interactive {
   justify-content: flex-start;
   padding: 0 14px;
   gap: 6px;
-  -webkit-app-region: drag;
+  /* No drag on the toolbar itself — every pixel must be scrollable/clickable */
+  -webkit-app-region: no-drag;
   flex-shrink: 0;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
+  /* Show a slim scrollbar on hover */
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
@@ -540,7 +542,7 @@ button, input, select, textarea, .interactive {
 
 /* Extra padding if both sidebar & notes list are collapsed in Focus mode */
 .editor-panel.with-traffic-lights .editor-toolbar {
-  padding-left: 78px;
+  padding-left: 82px;
 }
 
 .toolbar-group {
@@ -1142,16 +1144,6 @@ ul[data-type="taskList"] li > div {
 }
 
 /* Responsive Toolbar Improvements */
-.editor-toolbar {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none; /* Firefox */
-}
-
-.editor-toolbar::-webkit-scrollbar {
-  display: none; /* Safari and Chrome */
-}
-
 .toolbar-group {
   flex-shrink: 0;
 }
@@ -1193,13 +1185,7 @@ ul[data-type="taskList"] li > div {
   -webkit-app-region: no-drag !important;
 }
 
-.toolbar-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--border-color);
-  margin: 0 2px;
-  flex-shrink: 0;
-}
+
 
 .table-toolbar-group {
   background: rgba(255, 255, 255, 0.08);
