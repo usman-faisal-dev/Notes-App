@@ -509,11 +509,33 @@ button, input, select, textarea, .interactive {
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  gap: 8px;
+  justify-content: flex-start;
+  padding: 0 14px;
+  gap: 6px;
   -webkit-app-region: drag;
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.editor-toolbar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.editor-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-toolbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.editor-toolbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 /* Extra padding if both sidebar & notes list are collapsed in Focus mode */
@@ -1161,35 +1183,13 @@ ul[data-type="taskList"] li > div {
 }
 
 
-/* Toolbar 3-Section Layout */
-.toolbar-section-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* Single Scrollable Toolbar Layout */
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-color);
+  margin: 0 4px;
   flex-shrink: 0;
-  -webkit-app-region: no-drag !important;
-}
-
-.toolbar-section-center {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-app-region: no-drag !important;
-}
-
-.toolbar-section-center::-webkit-scrollbar {
-  display: none;
-}
-
-.toolbar-section-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-left: auto;
   -webkit-app-region: no-drag !important;
 }
 

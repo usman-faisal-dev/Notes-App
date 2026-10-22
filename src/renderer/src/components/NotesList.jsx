@@ -203,7 +203,7 @@ export default function NotesList({
             <button 
               className="toolbar-btn toolbar-btn-prominent"
               title="New Note (Cmd+N)"
-              onClick={onCreateNote}
+              onClick={() => onCreateNote()}
             >
               <SquarePen size={14} />
               <span style={{ fontSize: '12px' }}>New</span>
@@ -275,7 +275,7 @@ export default function NotesList({
             {!isTrashView && (
               <button 
                 className="btn-primary" 
-                onClick={onCreateNote}
+                onClick={() => onCreateNote()}
                 style={{ marginTop: '8px', fontSize: '12px' }}
               >
                 Create a Note

@@ -268,13 +268,34 @@ export default function App() {
 
   const handleCreateNote = async (data = {}) => {
     try {
-      const folder_id = activeFilter.type === 'folder' ? activeFilter.id : (folders[0]?.id || null)
-      const newNote = await api.createNote({ folder_id, ...data })
+      // Guard against React SyntheticEvent or non-plain data passed from onClick handlers
+      const isEvent = data && (data.nativeEvent || data.preventDefault || typeof data.stopPropagation === 'function')
+      const payload = isEvent ? {} : (typeof data === 'object' && data !== null ? data : {})
+
+      // If user is currently in Trash, switch back to All Notes so the newly created note is immediately visible
+      if (activeFilter.type === 'trash') {
+        setActiveFilter({ type: 'all' })
+      }
+      if (searchQuery) {
+        setSearchQuery('')
+      }
+
+      const folder_id = payload.folder_id || (activeFilter.type === 'folder' ? activeFilter.id : (folders[0]?.id || null))
+      const safeData = {
+        folder_id,
+        title: typeof payload.title === 'string' ? payload.title : 'New Note',
+        content: typeof payload.content === 'string' ? payload.content : '',
+        content_text: typeof payload.content_text === 'string' ? payload.content_text : '',
+        is_pinned: payload.is_pinned === 1 ? 1 : 0
+      }
+
+      const newNote = await api.createNote(safeData)
       await loadSidebarData()
       await loadNotes()
       if (newNote?.id) {
         setSelectedNoteId(newNote.id)
       }
+      showAppToast('Created new note')
       return newNote
     } catch (err) {
       console.error('Error creating note:', err)

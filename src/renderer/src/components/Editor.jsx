@@ -104,6 +104,7 @@ export default function Editor({
   const saveTimeoutRef = useRef(null)
   const fileInputRef = useRef(null)
   const editorRef = useRef(null)
+  const toolbarRef = useRef(null)
   const [showMenu, setShowMenu] = useState(false)
   const [toastMessage, setToastMessage] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
@@ -463,6 +464,20 @@ export default function Editor({
     }
   }, [note?.id, note?.is_locked, isReadOnly])
 
+  // Enable smooth horizontal scrolling with mouse wheel over the toolbar
+  useEffect(() => {
+    const el = toolbarRef.current
+    if (!el) return
+    const handleWheel = (e) => {
+      if (e.deltaY !== 0 && e.deltaX === 0) {
+        e.preventDefault()
+        el.scrollLeft += e.deltaY
+      }
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [])
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleOutsideClick = () => setShowMenu(false)
@@ -633,13 +648,13 @@ export default function Editor({
 
   return (
     <main className={`editor-panel ${isMaximized ? 'maximized' : ''} ${isSoloPane ? 'with-traffic-lights' : ''}`}>
-      <header className="editor-toolbar">
-        {/* Left Section: Navigation & New Note */}
-        <div className="toolbar-section-left">
+            <header className="editor-toolbar" ref={toolbarRef}>
+        {/* Navigation & New Note */}
+        <div className="toolbar-group">
           {sidebarCollapsed && (
             <button 
               className="toolbar-btn" 
-              title="Show Sidebar (Cmd+\)" 
+              title="Show Sidebar (Cmd+\\)" 
               onClick={onToggleSidebar}
             >
               <PanelLeft size={16} />
@@ -658,20 +673,19 @@ export default function Editor({
           <button 
             className="toolbar-btn toolbar-btn-prominent" 
             title="New Note (Cmd+N)" 
-            onClick={onCreateNote}
+            onClick={() => onCreateNote()}
           >
             <SquarePen size={15} />
             <span>New</span>
           </button>
         </div>
 
-        {/* Center Section: Formatting & Content Tools */}
-        <div className="toolbar-section-center">
+        <div className="toolbar-divider" />
 
         {/* Text Style Tools */}
         <div className="toolbar-group">
           <button
-            className={`toolbar-btn ${editor?.isActive('bold') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("bold") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleBold().run()}
             title="Bold (Cmd+B)"
             disabled={isReadOnly || isLocked}
@@ -679,7 +693,7 @@ export default function Editor({
             <Bold size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('italic') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("italic") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleItalic().run()}
             title="Italic (Cmd+I)"
             disabled={isReadOnly || isLocked}
@@ -687,7 +701,7 @@ export default function Editor({
             <Italic size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('underline') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("underline") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleUnderline().run()}
             title="Underline (Cmd+U)"
             disabled={isReadOnly || isLocked}
@@ -695,7 +709,7 @@ export default function Editor({
             <UnderlineIcon size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('strike') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("strike") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleStrike().run()}
             title="Strikethrough"
             disabled={isReadOnly || isLocked}
@@ -703,21 +717,21 @@ export default function Editor({
             <Strikethrough size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('highlight') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("highlight") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleHighlight().run()}
             title="Highlight"
             disabled={isReadOnly || isLocked}
           >
             <Highlighter size={15} />
           </button>
-
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
         </div>
 
-        {/* Headings & Structure */}
+        <div className="toolbar-divider" />
+
+        {/* Headings */}
         <div className="toolbar-group">
           <button
-            className={`toolbar-btn ${editor?.isActive('heading', { level: 1 }) ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("heading", { level: 1 }) ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
             title="Title (H1)"
             disabled={isReadOnly || isLocked}
@@ -725,21 +739,21 @@ export default function Editor({
             <Heading1 size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('heading', { level: 2 }) ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("heading", { level: 2 }) ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
             title="Heading (H2)"
             disabled={isReadOnly || isLocked}
           >
             <Heading2 size={15} />
           </button>
-
-          <div style={{ width: '1px', height: '18px', background: 'var(--border-color)', margin: '0 4px' }} />
         </div>
+
+        <div className="toolbar-divider" />
 
         {/* Lists & Inserts */}
         <div className="toolbar-group">
           <button
-            className={`toolbar-btn ${editor?.isActive('taskList') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("taskList") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleTaskList().run()}
             title="Checklist"
             disabled={isReadOnly || isLocked}
@@ -747,7 +761,7 @@ export default function Editor({
             <CheckSquare size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('bulletList') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("bulletList") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleBulletList().run()}
             title="Bullet List"
             disabled={isReadOnly || isLocked}
@@ -755,7 +769,7 @@ export default function Editor({
             <List size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('orderedList') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("orderedList") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleOrderedList().run()}
             title="Numbered List"
             disabled={isReadOnly || isLocked}
@@ -763,7 +777,7 @@ export default function Editor({
             <ListOrdered size={15} />
           </button>
           <button
-            className={`toolbar-btn ${isInTable ? 'active' : ''}`}
+            className={`toolbar-btn ${isInTable ? "active" : ""}`}
             onClick={handleAddTable}
             title="Add Table"
             disabled={isReadOnly || isLocked}
@@ -771,9 +785,9 @@ export default function Editor({
             <TableIcon size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('link') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("link") ? "active" : ""}`}
             onClick={() => {
-              const currentLink = editor?.getAttributes('link').href || ''
+              const currentLink = editor?.getAttributes("link").href || ""
               setLinkUrl(currentLink)
               setShowLinkModal(true)
             }}
@@ -783,7 +797,7 @@ export default function Editor({
             <LinkIcon size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('blockquote') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("blockquote") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleBlockquote().run()}
             title="Quote"
             disabled={isReadOnly || isLocked}
@@ -791,7 +805,7 @@ export default function Editor({
             <Quote size={15} />
           </button>
           <button
-            className={`toolbar-btn ${editor?.isActive('codeBlock') ? 'active' : ''}`}
+            className={`toolbar-btn ${editor?.isActive("codeBlock") ? "active" : ""}`}
             onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
             title="Code Block"
             disabled={isReadOnly || isLocked}
@@ -802,72 +816,74 @@ export default function Editor({
 
         {/* Dynamic Table Actions if in Table */}
         {isInTable && (
-          <div className="toolbar-group" style={{ background: 'rgba(255, 255, 255, 0.06)', borderRadius: '6px', padding: '1px 4px' }}>
-            <button
-              className="toolbar-btn"
-              title="Add Row Below"
-              onClick={() => editor?.chain().focus().addRowAfter().run()}
-            >
-              <PlusSquare size={14} />
-              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Row</span>
-            </button>
-            <button
-              className="toolbar-btn"
-              title="Add Column Right"
-              onClick={() => editor?.chain().focus().addColumnAfter().run()}
-            >
-              <PlusSquare size={14} />
-              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Col</span>
-            </button>
-            <button
-              className="toolbar-btn"
-              title="Delete Row"
-              onClick={() => editor?.chain().focus().deleteRow().run()}
-            >
-              <MinusSquare size={14} />
-              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Row</span>
-            </button>
-            <button
-              className="toolbar-btn"
-              title="Delete Column"
-              onClick={() => editor?.chain().focus().deleteColumn().run()}
-            >
-              <MinusSquare size={14} />
-              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Col</span>
-            </button>
-            <button
-              className="toolbar-btn"
-              title="Copy Table as Markdown"
-              onClick={async () => {
-                const tableEl = getActiveTableElement(editorRef.current)
-                const md = tableEl ? htmlToMarkdown(tableEl.outerHTML) : ""
-                if (md) {
-                  await copyToClipboard(md)
-                  showToast("Table copied as Markdown!")
-                } else {
-                  showToast("Could not copy table")
-                }
-              }}
-            >
-              <FileCode size={14} color="var(--accent-yellow)" />
-              <span style={{ fontSize: '11px', marginLeft: '3px' }}>Copy</span>
-            </button>
-            <button
-              className="toolbar-btn"
-              title="Delete Table"
-              style={{ color: 'var(--accent-red)' }}
-              onClick={() => editor?.chain().focus().deleteTable().run()}
-            >
-              <Trash size={14} />
-            </button>
-          </div>
+          <>
+            <div className="toolbar-divider" />
+            <div className="toolbar-group table-toolbar-group">
+              <button
+                className="toolbar-btn"
+                title="Add Row Below"
+                onClick={() => editor?.chain().focus().addRowAfter().run()}
+              >
+                <PlusSquare size={14} />
+                <span style={{ fontSize: "11px", marginLeft: "3px" }}>+Row</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                title="Add Column Right"
+                onClick={() => editor?.chain().focus().addColumnAfter().run()}
+              >
+                <PlusSquare size={14} />
+                <span style={{ fontSize: "11px", marginLeft: "3px" }}>+Col</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                title="Delete Row"
+                onClick={() => editor?.chain().focus().deleteRow().run()}
+              >
+                <MinusSquare size={14} />
+                <span style={{ fontSize: "11px", marginLeft: "3px" }}>-Row</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                title="Delete Column"
+                onClick={() => editor?.chain().focus().deleteColumn().run()}
+              >
+                <MinusSquare size={14} />
+                <span style={{ fontSize: "11px", marginLeft: "3px" }}>-Col</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                title="Copy Table as Markdown"
+                onClick={async () => {
+                  const tableEl = getActiveTableElement(editorRef.current)
+                  const md = tableEl ? htmlToMarkdown(tableEl.outerHTML) : ""
+                  if (md) {
+                    await copyToClipboard(md)
+                    showToast("Table copied as Markdown!")
+                  } else {
+                    showToast("Could not copy table")
+                  }
+                }}
+              >
+                <FileCode size={14} color="var(--accent-yellow)" />
+                <span style={{ fontSize: "11px", marginLeft: "3px" }}>Copy</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                title="Delete Table"
+                style={{ color: "var(--accent-red)" }}
+                onClick={() => editor?.chain().focus().deleteTable().run()}
+              >
+                <Trash size={14} />
+              </button>
+            </div>
+          </>
         )}
 
-        </div>
+        <div className="toolbar-divider" />
 
-        {/* Right Section: Actions & Utilities */}
-        <div className="toolbar-section-right">
-
+        {/* Note Actions & Options */}
+        <div className="toolbar-group">
           {/* Share Note Button */}
           <button
             className="toolbar-btn"
@@ -879,8 +895,8 @@ export default function Editor({
 
           {/* Maximize / Focus Mode Button */}
           <button
-            className={`toolbar-btn ${isMaximized ? 'active' : ''}`}
-            title={isMaximized ? 'Exit Focus Mode (Cmd+Shift+F)' : 'Maximize Note (Cmd+Shift+F)'}
+            className={`toolbar-btn ${isMaximized ? "active" : ""}`}
+            title={isMaximized ? "Exit Focus Mode (Cmd+Shift+F)" : "Maximize Note (Cmd+Shift+F)"}
             onClick={onToggleMaximize}
           >
             {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -890,20 +906,20 @@ export default function Editor({
             <>
               {/* Pin Note */}
               <button
-                className={`toolbar-btn ${note.is_pinned === 1 ? 'active' : ''}`}
-                title={note.is_pinned === 1 ? 'Unpin Note' : 'Pin Note'}
+                className={`toolbar-btn ${note.is_pinned === 1 ? "active" : ""}`}
+                title={note.is_pinned === 1 ? "Unpin Note" : "Pin Note"}
                 onClick={() => onUpdateNote({ id: note.id, is_pinned: note.is_pinned === 1 ? 0 : 1 })}
               >
-                <Pin size={15} fill={note.is_pinned === 1 ? 'var(--accent-yellow)' : 'none'} />
+                <Pin size={15} fill={note.is_pinned === 1 ? "var(--accent-yellow)" : "none"} />
               </button>
 
               {/* Lock Note */}
               <button
-                className={`toolbar-btn ${isLocked ? 'active' : ''}`}
-                title={isLocked ? 'Unlock Note' : 'Lock Note'}
+                className={`toolbar-btn ${isLocked ? "active" : ""}`}
+                title={isLocked ? "Unlock Note" : "Lock Note"}
                 onClick={() => {
                   onUpdateNote({ id: note.id, is_locked: isLocked ? 0 : 1 })
-                  showToast(isLocked ? 'Note Unlocked' : 'Note Locked')
+                  showToast(isLocked ? "Note Unlocked" : "Note Locked")
                 }}
               >
                 {isLocked ? <Lock size={15} color="var(--accent-yellow)" /> : <Unlock size={15} />}
